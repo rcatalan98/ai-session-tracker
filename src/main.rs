@@ -1,4 +1,5 @@
 mod bottlenecks;
+mod flamegraph;
 mod metrics;
 mod parser;
 mod report;
@@ -73,6 +74,17 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
     },
+
+    /// Generate a flamegraph-style SVG visualization
+    Flame {
+        /// Output file path
+        #[arg(short, long, default_value = "session-flamegraph.svg")]
+        output: PathBuf,
+
+        /// Filter by project path
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -93,6 +105,9 @@ fn main() {
         }
         Commands::List { limit, project } => {
             list_command(limit, project);
+        }
+        Commands::Flame { output, project } => {
+            flame_command(output, project);
         }
     }
 }
@@ -335,4 +350,26 @@ fn list_command(limit: usize, project: Option<PathBuf>) {
         "\n{} total sessions found",
         sessions.len().to_string().bold()
     );
+}
+
+fn flame_command(output: PathBuf, project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    match flamegraph::generate_svg(&sessions, &output) {
+        Ok(()) => {
+            println!("{} Generated flamegraph: {}", "✓".green(), output.display());
+            println!(
+                "{}",
+                "Open in browser to view interactive visualization".dimmed()
+            );
+        }
+        Err(e) => {
+            println!("{}: Failed to generate flamegraph: {}", "Error".red(), e);
+        }
+    }
 }
