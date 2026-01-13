@@ -1,5 +1,7 @@
+use crate::flamegraph::{extract_spans, ActivityType};
 use crate::github::{load_current_repo_cache, PrMapping, RepoCache};
 use crate::parser::Session;
+use chrono::{DateTime, Local, Utc};
 use colored::Colorize;
 use std::collections::HashMap;
 
@@ -169,6 +171,202 @@ pub fn list_issues(sessions: &[Session]) {
     );
 }
 
+/// Session info for a specific issue
+#[derive(Debug)]
+struct IssueSession<'a> {
+    session: &'a Session,
+    duration_minutes: f64,
+}
+
+/// Show detailed metrics for a specific issue
+pub fn show_issue_detail(issue_number: u32, sessions: &[Session]) {
+    // Load GitHub cache
+    let cache = match load_current_repo_cache() {
+        Some(c) => c,
+        None => {
+            println!(
+                "{}: No GitHub cache found. Run `aist sync` first.",
+                "Error".red()
+            );
+            return;
+        }
+    };
+
+    // Find the PR that closes this issue
+    let pr = cache
+        .prs
+        .iter()
+        .find(|p| p.closed_issues.contains(&issue_number));
+
+    let pr = match pr {
+        Some(p) => p,
+        None => {
+            println!(
+                "{}: Issue #{} not found in synced PRs.",
+                "Error".red(),
+                issue_number
+            );
+            println!("{}", "Tip: Run `aist sync` to update PR cache.".dimmed());
+            return;
+        }
+    };
+
+    // Find sessions matching this PR's branch
+    let mut issue_sessions: Vec<IssueSession> = sessions
+        .iter()
+        .filter(|s| s.git_branch.as_deref() == Some(&pr.branch))
+        .map(|s| {
+            let duration = match (s.start_time, s.end_time) {
+                (Some(start), Some(end)) => (end - start).num_minutes() as f64,
+                _ => 0.0,
+            };
+            IssueSession {
+                session: s,
+                duration_minutes: duration,
+            }
+        })
+        .collect();
+
+    // Sort by start time
+    issue_sessions.sort_by(|a, b| a.session.start_time.cmp(&b.session.start_time));
+
+    // Calculate totals
+    let total_time: f64 = issue_sessions.iter().map(|s| s.duration_minutes).sum();
+    let session_count = issue_sessions.len();
+
+    // Determine status
+    let status = if pr.merged_at.is_some() {
+        "Merged".green()
+    } else {
+        "Open".yellow()
+    };
+
+    // Print header
+    println!("{}", format!("ISSUE #{}", issue_number).bold());
+    println!("{}", "═".repeat(70));
+    println!();
+
+    // Issue metadata
+    println!("{}: {}", "Title".dimmed(), pr.title);
+    println!("{}: {}", "Status".dimmed(), status);
+    println!("{}: {}", "Branch".dimmed(), pr.branch);
+    println!(
+        "{}: {}",
+        "Total time".dimmed(),
+        format_duration(total_time).bold()
+    );
+    println!("{}: {}", "Sessions".dimmed(), session_count);
+    println!();
+
+    if issue_sessions.is_empty() {
+        println!(
+            "{}",
+            "No sessions found matching this issue's branch.".yellow()
+        );
+        return;
+    }
+
+    // Session list
+    println!("{}", "SESSIONS".bold());
+    println!("{}", "─".repeat(70).dimmed());
+    println!(
+        "{:<20} {:<12} {:>10} {:>26}",
+        "SESSION".dimmed(),
+        "".dimmed(),
+        "DURATION".dimmed(),
+        "TIMESTAMP".dimmed()
+    );
+    println!("{}", "─".repeat(70).dimmed());
+
+    for issue_session in &issue_sessions {
+        let session = issue_session.session;
+        let session_short: String = session.session_id.chars().take(18).collect();
+        let duration_str = format_duration(issue_session.duration_minutes);
+        let timestamp_str = session
+            .start_time
+            .map(|t| format_timestamp(&t))
+            .unwrap_or_else(|| "-".to_string());
+
+        println!(
+            "{:<20} {:<12} {:>10} {:>26}",
+            session_short, "", duration_str, timestamp_str
+        );
+    }
+
+    println!("{}", "─".repeat(70).dimmed());
+    println!();
+
+    // Activity breakdown
+    print_activity_breakdown(&issue_sessions);
+}
+
+/// Format timestamp for display
+fn format_timestamp(ts: &DateTime<Utc>) -> String {
+    let local: DateTime<Local> = ts.with_timezone(&Local);
+    local.format("%Y-%m-%d %H:%M").to_string()
+}
+
+/// Print time breakdown by activity type
+fn print_activity_breakdown(issue_sessions: &[IssueSession]) {
+    println!("{}", "ACTIVITY BREAKDOWN".bold());
+    println!("{}", "─".repeat(70).dimmed());
+
+    // Collect all spans from all sessions
+    let mut time_by_activity: HashMap<ActivityType, f64> = HashMap::new();
+    let mut total_span_time = 0.0;
+
+    for issue_session in issue_sessions {
+        let spans = extract_spans(issue_session.session);
+        for span in spans {
+            let duration_mins = (span.end - span.start).num_seconds() as f64 / 60.0;
+            *time_by_activity.entry(span.activity).or_insert(0.0) += duration_mins;
+            total_span_time += duration_mins;
+        }
+    }
+
+    if total_span_time == 0.0 {
+        println!("{}", "No activity data available.".yellow());
+        return;
+    }
+
+    // Sort by time descending
+    let mut activities: Vec<_> = time_by_activity.into_iter().collect();
+    activities.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Print each activity with a simple bar
+    for (activity, minutes) in &activities {
+        let percentage = (*minutes / total_span_time * 100.0) as usize;
+        let bar_width = (percentage / 2).clamp(1, 30); // scale to ~30 chars max
+        let bar: String = "█".repeat(bar_width);
+
+        let activity_name = match activity {
+            ActivityType::Productive => "Productive",
+            ActivityType::Reading => "Reading/Search",
+            ActivityType::Executing => "Executing",
+            ActivityType::Error => "Error",
+            ActivityType::Gap => "Gap/Pause",
+            ActivityType::Thinking => "Thinking",
+        };
+
+        let colored_bar = match activity {
+            ActivityType::Productive => bar.green(),
+            ActivityType::Reading => bar.yellow(),
+            ActivityType::Executing => bar.blue(),
+            ActivityType::Error => bar.red(),
+            ActivityType::Gap => bar.dimmed(),
+            ActivityType::Thinking => bar.purple(),
+        };
+
+        println!(
+            "{:<14} {} {:>6} ({:>2}%)",
+            activity_name,
+            colored_bar,
+            format_duration(*minutes),
+            percentage
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -291,5 +489,29 @@ mod tests {
         assert_eq!(format_duration(60.0), "1h 0m");
         assert_eq!(format_duration(90.0), "1h 30m");
         assert_eq!(format_duration(125.0), "2h 5m");
+    }
+
+    #[test]
+    fn test_format_timestamp() {
+        let ts = Utc.with_ymd_and_hms(2026, 1, 15, 14, 30, 0).unwrap();
+        let formatted = format_timestamp(&ts);
+        // Should contain the date and time components
+        assert!(formatted.contains("2026"));
+        assert!(formatted.contains("01"));
+        assert!(formatted.contains("15"));
+    }
+
+    #[test]
+    fn test_issue_session_duration() {
+        let session = make_session("test-session", Some("feature/issue-5"), 45);
+        let issue_session = IssueSession {
+            session: &session,
+            duration_minutes: 45.0,
+        };
+        assert_eq!(issue_session.duration_minutes, 45.0);
+        assert_eq!(
+            issue_session.session.git_branch,
+            Some("feature/issue-5".to_string())
+        );
     }
 }
