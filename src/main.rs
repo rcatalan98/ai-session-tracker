@@ -1,6 +1,7 @@
 mod bottlenecks;
 mod flamegraph;
 mod github;
+mod issues;
 mod metrics;
 mod parser;
 mod report;
@@ -101,6 +102,13 @@ enum Commands {
         #[arg(long)]
         repo: Option<String>,
     },
+
+    /// List GitHub issues with time metrics
+    Issues {
+        /// Filter by project path
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -131,6 +139,9 @@ fn main() {
         }
         Commands::Sync { owner, repo } => {
             sync_command(owner.as_deref(), repo.as_deref());
+        }
+        Commands::Issues { project } => {
+            issues_command(project);
         }
     }
 }
@@ -411,4 +422,15 @@ fn sync_command(owner: Option<&str>, repo: Option<&str>) {
             println!("{}: {}", "Error".red(), e);
         }
     }
+}
+
+fn issues_command(project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    issues::list_issues(&sessions);
 }

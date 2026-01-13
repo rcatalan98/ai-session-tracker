@@ -16,7 +16,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Create src/github.rs. Use std::process::Command to call `gh pr list --json number,headRefName,body,mergedAt,title --state merged`. Parse 'Closes #N' from PR body. Store in JSON file."
     },
     {
@@ -32,7 +32,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Create src/issues.rs. Load GitHub cache, match sessions by gitBranch field. Sum duration from matching sessions. Format similar to bottlenecks output."
     },
     {

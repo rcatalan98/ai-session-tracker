@@ -8,5 +8,28 @@ Started: 2026-01-13
 - Pattern: Parse Claude logs from `~/.claude/projects/{project-encoded}/{session-id}.jsonl`
 - Pattern: Sessions have `gitBranch` field that links to PRs
 - Gotcha: Branch names are in Claude logs, but issue links are in PRs (via "Closes #N")
+- Pattern: Cache GitHub data in ~/.config/aist/repos/{owner}-{repo}.json
 
+---
+
+## 2026-01-13 - US-001: GitHub sync command
+- Implemented `aist sync` command to fetch merged PRs from GitHub
+- Files changed: src/github.rs (new), src/main.rs, src/bottlenecks.rs, src/metrics.rs, src/report.rs
+- **Learnings for future iterations:**
+  - Use `gh pr list --json` to get structured PR data
+  - Parse "Closes #N", "Fixes #N", "Resolves #N" patterns (case insensitive) to find linked issues
+  - Store cache with owner, repo, PR list, and sync timestamp
+  - RepoCache and PrMapping structs are ready for use by US-002/US-003
+  - Added `#[allow(dead_code)]` for load_cache functions that will be used in later stories
+---
+
+## 2026-01-13 - US-002: Issue list command
+- Implemented `aist issues` command to list GitHub issues with time metrics
+- Files changed: src/issues.rs (new), src/main.rs
+- **Learnings for future iterations:**
+  - Build branch→PR mapping from cache, then match sessions by gitBranch
+  - IssueMetrics struct stores: issue_number, title, branch, total_minutes, session_count
+  - list_issues() handles all display logic with colored output
+  - calculate_issue_metrics() is reusable for US-003/US-004
+  - Added tests for edge cases: no branch, no matching PR, PR with no issues
 ---
