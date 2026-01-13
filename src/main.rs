@@ -1,3 +1,4 @@
+mod bottlenecks;
 mod metrics;
 mod parser;
 mod timeline;
@@ -205,8 +206,16 @@ fn analyze_command(project: Option<PathBuf>, verbose: bool) {
     );
 }
 
-fn bottlenecks_command(_project: Option<PathBuf>, _limit: usize) {
-    println!("{}", "Not implemented yet".yellow());
+fn bottlenecks_command(project: Option<PathBuf>, limit: usize) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    let detected = bottlenecks::detect_all(&sessions);
+    bottlenecks::print_bottlenecks(&detected, limit);
 }
 
 fn report_command(_period: &str, _format: &str) {
