@@ -1,4 +1,5 @@
 mod parser;
+mod timeline;
 
 use clap::{Parser, Subcommand};
 use colored::Colorize;
@@ -105,8 +106,31 @@ fn report_command(_period: &str, _format: &str) {
     println!("{}", "Not implemented yet".yellow());
 }
 
-fn timeline_command(_session: &str, _project: Option<PathBuf>) {
-    println!("{}", "Not implemented yet".yellow());
+fn timeline_command(session_id: &str, project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    let session = if session_id == "latest" {
+        timeline::get_latest_session(&sessions)
+    } else {
+        timeline::find_session_by_id(&sessions, session_id)
+    };
+
+    match session {
+        Some(s) => timeline::print_timeline(s),
+        None => {
+            println!(
+                "{}: No session found matching '{}'",
+                "Error".red(),
+                session_id
+            );
+            println!("{}", "Use 'aist list' to see available sessions.".dimmed());
+        }
+    }
 }
 
 fn list_command(limit: usize, project: Option<PathBuf>) {
