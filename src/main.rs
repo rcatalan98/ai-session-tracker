@@ -1,3 +1,4 @@
+mod metrics;
 mod parser;
 
 use clap::{Parser, Subcommand};
@@ -93,8 +94,114 @@ fn main() {
     }
 }
 
-fn analyze_command(_project: Option<PathBuf>, _verbose: bool) {
-    println!("{}", "Not implemented yet".yellow());
+fn analyze_command(project: Option<PathBuf>, verbose: bool) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    let aggregated = metrics::aggregate_metrics(&sessions);
+
+    // Header
+    println!("{}", "SESSION ANALYSIS".bold());
+    println!("{}", "\u{2550}".repeat(16));
+    println!();
+
+    // Summary line
+    println!(
+        "Sessions: {} | Total time: {}",
+        aggregated.session_count.to_string().bold(),
+        metrics::format_duration(aggregated.total_duration_minutes).bold()
+    );
+    println!();
+
+    // Tool usage section
+    println!("{}", "TOOL USAGE".bold());
+    println!("{}", "\u{2500}".repeat(10));
+
+    // Sort tools by count (descending)
+    let mut tool_list: Vec<_> = aggregated.tool_counts.iter().collect();
+    tool_list.sort_by(|a, b| b.1.cmp(a.1));
+
+    for (tool, count) in tool_list
+        .iter()
+        .take(if verbose { tool_list.len() } else { 10 })
+    {
+        let percentage = if aggregated.total_tool_calls > 0 {
+            (**count as f64 / aggregated.total_tool_calls as f64 * 100.0) as usize
+        } else {
+            0
+        };
+        println!(
+            "{:<12} {:>6} ({:>2}%)",
+            tool,
+            metrics::format_number(**count),
+            percentage
+        );
+    }
+
+    if !verbose && tool_list.len() > 10 {
+        println!(
+            "{}",
+            format!(
+                "... and {} more (use --verbose to see all)",
+                tool_list.len() - 10
+            )
+            .dimmed()
+        );
+    }
+    println!();
+
+    // By project section
+    println!("{}", "BY PROJECT".bold());
+    println!("{}", "\u{2500}".repeat(10));
+
+    // Sort projects by duration (descending)
+    let mut project_list: Vec<_> = aggregated.by_project.iter().collect();
+    project_list.sort_by(|a, b| {
+        b.1.total_duration_minutes
+            .partial_cmp(&a.1.total_duration_minutes)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    for (project_name, proj_metrics) in
+        project_list
+            .iter()
+            .take(if verbose { project_list.len() } else { 10 })
+    {
+        println!(
+            "{:<20} {:>2} sessions, {:>6}",
+            if project_name.len() > 18 {
+                format!("{}...", &project_name[..15])
+            } else {
+                (*project_name).clone()
+            },
+            proj_metrics.session_count,
+            metrics::format_duration(proj_metrics.total_duration_minutes)
+        );
+    }
+
+    if !verbose && project_list.len() > 10 {
+        println!(
+            "{}",
+            format!(
+                "... and {} more (use --verbose to see all)",
+                project_list.len() - 10
+            )
+            .dimmed()
+        );
+    }
+    println!();
+
+    // Errors section
+    println!("{}", "ERRORS".bold());
+    println!("{}", "\u{2500}".repeat(6));
+    println!(
+        "Total: {} errors detected",
+        metrics::format_number(aggregated.total_errors)
+    );
 }
 
 fn bottlenecks_command(_project: Option<PathBuf>, _limit: usize) {
