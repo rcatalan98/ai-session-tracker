@@ -1,10 +1,24 @@
 #!/bin/bash
-# Runs before each push
-# Full test suite
+# Pre-push hook: full validation
 
 set -e
 
 echo "Running pre-push checks..."
-make lint
-make test
-echo "✓ Pre-push passed"
+
+# Format
+echo "→ cargo fmt --check"
+cargo fmt --check
+
+# Lint
+echo "→ cargo clippy"
+cargo clippy -- -D warnings
+
+# Build
+echo "→ cargo build"
+cargo build
+
+# Test
+echo "→ cargo test"
+cargo test
+
+echo "✓ Pre-push checks passed"
