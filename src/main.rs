@@ -1,6 +1,7 @@
 mod bottlenecks;
 mod metrics;
 mod parser;
+mod report;
 mod timeline;
 
 use clap::{Parser, Subcommand};
@@ -218,8 +219,20 @@ fn bottlenecks_command(project: Option<PathBuf>, limit: usize) {
     bottlenecks::print_bottlenecks(&detected, limit);
 }
 
-fn report_command(_period: &str, _format: &str) {
-    println!("{}", "Not implemented yet".yellow());
+fn report_command(period: &str, format: &str) {
+    let sessions = parser::load_sessions(None);
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    let report_data = report::generate_report(&sessions, period);
+
+    match format {
+        "json" => report::print_json_report(&report_data),
+        _ => report::print_text_report(&report_data),
+    }
 }
 
 fn timeline_command(session_id: &str, project: Option<PathBuf>) {
