@@ -11,6 +11,7 @@ When working with AI coding assistants, you can't see:
 - What patterns cause sessions to fail?
 - How much time is wasted on error loops?
 - Which types of tasks work well vs poorly?
+- How long does it take to build a feature?
 
 ## Solution
 
@@ -40,7 +41,29 @@ aist timeline
 
 # List recent sessions
 aist list
+
+# Generate flamegraph visualization
+aist flame                      # All sessions
+aist flame --group-by project   # Group by project
+aist flame --group-by issue     # Group by GitHub issue
 ```
+
+### GitHub Integration
+
+Track time spent per GitHub issue by linking PRs to Claude sessions:
+
+```bash
+# Sync merged PRs from GitHub (caches PR→Issue→Branch mappings)
+aist sync
+
+# List time spent per issue
+aist issues
+
+# Detailed breakdown for a specific issue
+aist issue 4
+```
+
+**How it works:** Sessions are linked to issues via branch names. When you work on a branch like `feature/issue-4-auth`, and your PR says "Closes #4", `aist` connects all sessions on that branch to issue #4.
 
 ## Example Output
 
@@ -74,11 +97,22 @@ aist --help
 ## Development
 
 ```bash
-make setup    # First-time setup (installs hooks)
+make setup    # First-time setup (installs git hooks)
 make dev      # Build and run
 make test     # Run tests
-make lint     # Check style
+make lint     # Check style (fmt + clippy)
+make fmt      # Auto-format code
 ```
+
+### Git Hooks
+
+Installed via `make setup`:
+- **pre-commit**: `cargo fmt --check`
+- **pre-push**: fmt, clippy, build, test
+
+### CI
+
+GitHub Actions runs on every push/PR: format, clippy, build, test.
 
 ## How It Works
 

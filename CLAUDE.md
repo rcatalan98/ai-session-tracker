@@ -8,17 +8,17 @@
 
 **What:** CLI tool that analyzes Claude Code session transcripts to find bottlenecks in AI-assisted development.
 
-**Current phase:** MVP (research validation)
+**Current phase:** Phase 2 (GitHub Integration)
 
 **In scope:**
 - Parse Claude Code transcripts from `~/.claude/projects/`
 - Detect bottleneck patterns (error loops, exploration spirals, edit thrashing)
-- Generate session timelines
+- Generate session timelines and flamegraph visualizations
 - Generate weekly efficiency reports
+- GitHub integration (track time per issue via PR→Branch→Session linking)
 
 **Out of scope:**
 - Manual start/stop tracking (transcripts already have timestamps)
-- GitHub integration
 - Database storage (files only)
 - Web dashboard
 
@@ -53,16 +53,25 @@ ai-session-tracker/
 ├── CLAUDE.md              # This file
 ├── Makefile               # Commands
 ├── Cargo.toml
-├── .githooks/
-│   ├── pre-commit
-│   └── pre-push
+├── .github/workflows/     # CI configuration
+│   └── ci.yml
+├── .githooks/             # Git hooks (installed via make setup)
+│   ├── pre-commit         # cargo fmt --check
+│   └── pre-push           # fmt, clippy, build, test
+├── .ralph/                # Ralph autonomous agent config
+│   ├── prompt.md
+│   ├── prd.json
+│   └── progress.txt
 ├── src/
 │   ├── main.rs            # CLI entry point
 │   ├── parser.rs          # Parse Claude JSONL transcripts
 │   ├── metrics.rs         # Calculate metrics
 │   ├── bottlenecks.rs     # Detect bottleneck patterns
 │   ├── timeline.rs        # Session timeline view
-│   └── report.rs          # Generate reports
+│   ├── report.rs          # Generate reports
+│   ├── flamegraph.rs      # SVG flamegraph visualization
+│   ├── github.rs          # GitHub API (PR sync, caching)
+│   └── issues.rs          # Issue-level time tracking
 └── product_research/      # Research scripts and findings
 ```
 
@@ -78,16 +87,24 @@ make smoke            # Fast validation (~10s)
 
 # Build & Test
 make test             # Run tests
-make lint             # Check style
+make lint             # Check style (fmt + clippy)
 make fmt              # Format code
 make build            # Release build
 
-# Usage (after build)
+# CLI Usage (after build)
 aist analyze          # Analyze all sessions
 aist bottlenecks      # Show top bottlenecks
 aist report --week    # Weekly summary
 aist timeline         # Show latest session timeline
 aist list             # List recent sessions
+aist flame            # Generate flamegraph SVG
+aist flame --group-by project  # Group by project
+aist flame --group-by issue    # Group by GitHub issue
+
+# GitHub Integration
+aist sync             # Fetch merged PRs, cache mappings
+aist issues           # List time per issue
+aist issue <N>        # Detailed breakdown for issue #N
 ```
 
 ---
@@ -172,22 +189,43 @@ Tool results are in user messages:
 ## What NOT to Do
 
 - Don't add database storage (files are fine for this scale)
-- Don't add GitHub integration (keep it local)
-- Don't add web UI (CLI is sufficient for MVP)
+- Don't add web UI (CLI is sufficient)
 - Don't optimize prematurely
 - Don't add features "while you're there"
 
 ---
 
-## MVP Features
+## Features
 
-| Command | Description | Priority |
-|---------|-------------|----------|
-| `aist analyze` | Show session metrics | P0 |
-| `aist bottlenecks` | Detect and display bottleneck patterns | P0 |
-| `aist report --week` | Weekly efficiency report | P0 |
-| `aist timeline` | Visual timeline of session | P1 |
-| `aist list` | List recent sessions | P1 |
+| Command | Description | Status |
+|---------|-------------|--------|
+| `aist analyze` | Show session metrics | ✓ |
+| `aist bottlenecks` | Detect and display bottleneck patterns | ✓ |
+| `aist report --week` | Weekly efficiency report | ✓ |
+| `aist timeline` | Visual timeline of session | ✓ |
+| `aist list` | List recent sessions | ✓ |
+| `aist flame` | Flamegraph SVG visualization | ✓ |
+| `aist sync` | Sync GitHub PRs and cache mappings | ✓ |
+| `aist issues` | List time spent per GitHub issue | ✓ |
+| `aist issue <N>` | Detailed breakdown for specific issue | ✓ |
+
+---
+
+## GitHub Integration Architecture
+
+Sessions are linked to GitHub issues via PR branch names:
+
+```
+PR #12 "Add auth" → closes #4 → branch: feature/issue-4-auth
+                                    ↓
+Session (gitBranch: "feature/issue-4-auth") → linked to Issue #4
+```
+
+**Data flow:**
+1. `aist sync` fetches merged PRs via `gh pr list --json`
+2. Parses "Closes #N", "Fixes #N", "Resolves #N" from PR bodies
+3. Caches to `~/.config/aist/repos/{owner}-{repo}.json`
+4. `aist issues` matches sessions by `gitBranch` field
 
 ---
 
@@ -204,4 +242,4 @@ Tool results are in user messages:
 
 ---
 
-*Last updated: 2026-01-13*
+*Last updated: 2026-01-14*
