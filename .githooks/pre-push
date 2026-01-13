@@ -1,0 +1,10 @@
+#!/bin/bash
+# Runs before each push
+# Full test suite
+
+set -e
+
+echo "Running pre-push checks..."
+make lint
+make test
+echo "✓ Pre-push passed"

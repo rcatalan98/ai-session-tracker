@@ -1,73 +1,90 @@
 # AI Session Tracker
 
-> Track, analyze, and improve AI-assisted development workflows
+> Find bottlenecks in AI-assisted development
 
-A CLI tool that helps developers understand and optimize their AI coding sessions by tracking time, correlating with git/GitHub, and generating actionable insights.
+A CLI tool that analyzes Claude Code session transcripts to identify what's slowing down your AI-assisted workflow.
 
 ## The Problem
 
-When working with AI coding assistants (Claude Code, Copilot, Cursor), we lack visibility into:
-- How long does AI take to complete tasks?
-- How much time is thinking/planning vs actual code output?
-- Which types of tasks does AI handle well vs poorly?
-- What causes AI sessions to fail or take longer?
+When working with AI coding assistants, you can't see:
+- Where does the AI get stuck?
+- What patterns cause sessions to fail?
+- How much time is wasted on error loops?
+- Which types of tasks work well vs poorly?
 
 ## Solution
 
-`aist` (AI Session Tracker) provides:
+`aist` analyzes your existing Claude Code transcripts (no manual tracking needed) and detects:
 
-- **Session tracking** - Start/stop tracking with issue context
-- **Claude Code parsing** - Extract detailed metrics from session transcripts
-- **Git correlation** - Link sessions to commits made during that time
-- **GitHub sync** - Push session data as issue comments or PR metadata
-- **Reports** - Weekly/monthly summaries with actionable insights
+| Pattern | What It Means |
+|---------|--------------|
+| **Error loops** | Tool fails → retry → fails again |
+| **Exploration spirals** | Lots of reading, no editing |
+| **Edit thrashing** | Same file edited repeatedly |
+| **Long gaps** | Session stalls for >5 minutes |
 
-## Quick Start
+## Usage
 
 ```bash
-# Install (coming soon)
-brew install ai-session-tracker
+# Analyze all sessions
+aist analyze
 
-# Start tracking a session
-aist start --issue 110 --description "Fix error handling"
+# Show top bottlenecks
+aist bottlenecks
 
-# Work with your AI assistant...
-
-# Stop and record outcome
-aist stop --outcome success
-
-# Generate a report
+# Weekly efficiency report
 aist report --week
+
+# Session timeline
+aist timeline
+
+# List recent sessions
+aist list
 ```
 
-## Tech Stack
+## Example Output
 
-- **Language**: Rust (single binary, fast, cross-platform)
-- **CLI Framework**: clap v4
-- **Storage**: SQLite + JSONL hybrid
-- **GitHub API**: octocrab
-- **Templates**: handlebars
+```
+BOTTLENECK: Error Loop
+━━━━━━━━━━━━━━━━━━━━━━
+Session: abc123 (ai-editor, 45 min ago)
+Pattern: Bash failed 4 times in a row
+Time wasted: ~8 minutes
+Suggestion: Check PATH or tool availability before running
+
+BOTTLENECK: Exploration Spiral
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Session: def456 (booking-platform, 2 hours ago)
+Pattern: 23 Read calls, 0 Edit calls over 12 minutes
+Suggestion: Provide better context upfront (CLAUDE.md, file hints)
+```
+
+## Install
+
+```bash
+# From source
+git clone https://github.com/rcatalan98/ai-session-tracker
+cd ai-session-tracker
+make install
+
+# Verify
+aist --help
+```
 
 ## Development
 
 ```bash
-# Clone the repository
-git clone https://github.com/YOUR_USERNAME/ai-session-tracker
-cd ai-session-tracker
-
-# Build
-cargo build
-
-# Run tests
-cargo test
-
-# Run the CLI
-cargo run -- start --issue 123
+make setup    # First-time setup (installs hooks)
+make dev      # Build and run
+make test     # Run tests
+make lint     # Check style
 ```
 
-## Project Status
+## How It Works
 
-This project is currently in the specification and planning phase. See the [spec document](./docs/spec.md) for the full design.
+Claude Code already saves session transcripts to `~/.claude/projects/`. Each message has timestamps, tool calls, and results. `aist` parses these files and detects patterns that indicate wasted time.
+
+No manual start/stop. No database. Just file analysis.
 
 ## License
 
