@@ -68,8 +68,7 @@ pub fn generate_report(sessions: &[Session], period: &str) -> Report {
     let efficiency_percent = if aggregated.total_duration_minutes > 0.0 {
         ((aggregated.total_duration_minutes - wasted_time) / aggregated.total_duration_minutes
             * 100.0)
-            .max(0.0)
-            .min(100.0)
+            .clamp(0.0, 100.0)
     } else {
         100.0
     };

@@ -283,9 +283,12 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
 fn detect_edit_thrashing(session: &Session) -> Vec<Bottleneck> {
     let mut bottlenecks = Vec::new();
 
-    // Count edits per file
-    let mut edit_counts: HashMap<String, (usize, Option<DateTime<Utc>>, Option<DateTime<Utc>>)> =
-        HashMap::new();
+    // Count edits per file: (count, first_edit, last_edit)
+    #[allow(clippy::type_complexity)]
+    let mut edit_counts: HashMap<
+        String,
+        (usize, Option<DateTime<Utc>>, Option<DateTime<Utc>>),
+    > = HashMap::new();
 
     for msg in &session.messages {
         if msg.msg_type == MessageType::Assistant {
@@ -369,8 +372,7 @@ fn is_error_content(content: &str) -> bool {
 /// Extract short project name from path
 fn extract_project_name(path: &str) -> String {
     path.split('/')
-        .filter(|s| !s.is_empty())
-        .last()
+        .rfind(|s| !s.is_empty())
         .unwrap_or("unknown")
         .to_string()
 }

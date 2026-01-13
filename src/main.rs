@@ -1,5 +1,7 @@
 mod bottlenecks;
 mod flamegraph;
+mod github;
+mod issues;
 mod metrics;
 mod parser;
 mod report;
@@ -85,9 +87,37 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
 
-        /// Group by: session (default) or project
+        /// Group by: session (default), project, or issue
         #[arg(short, long, default_value = "session")]
         group_by: String,
+    },
+
+    /// Sync GitHub PRs and cache PR→Issue→Branch mappings
+    Sync {
+        /// GitHub repository owner (auto-detected from git remote if not specified)
+        #[arg(long)]
+        owner: Option<String>,
+
+        /// GitHub repository name (auto-detected from git remote if not specified)
+        #[arg(long)]
+        repo: Option<String>,
+    },
+
+    /// List GitHub issues with time metrics
+    Issues {
+        /// Filter by project path
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+    },
+
+    /// Show detailed metrics for a specific GitHub issue
+    Issue {
+        /// Issue number (e.g., 4)
+        number: u32,
+
+        /// Filter by project path
+        #[arg(short, long)]
+        project: Option<PathBuf>,
     },
 }
 
@@ -116,6 +146,15 @@ fn main() {
             group_by,
         } => {
             flame_command(output, project, &group_by);
+        }
+        Commands::Sync { owner, repo } => {
+            sync_command(owner.as_deref(), repo.as_deref());
+        }
+        Commands::Issues { project } => {
+            issues_command(project);
+        }
+        Commands::Issue { number, project } => {
+            issue_detail_command(number, project);
         }
     }
 }
@@ -370,6 +409,7 @@ fn flame_command(output: PathBuf, project: Option<PathBuf>, group_by: &str) {
 
     let result = match group_by {
         "project" => flamegraph::generate_svg_by_project(&sessions, &output),
+        "issue" => flamegraph::generate_svg_by_issue(&sessions, &output),
         _ => flamegraph::generate_svg(&sessions, &output),
     };
 
@@ -385,4 +425,37 @@ fn flame_command(output: PathBuf, project: Option<PathBuf>, group_by: &str) {
             println!("{}: Failed to generate flamegraph: {}", "Error".red(), e);
         }
     }
+}
+
+fn sync_command(owner: Option<&str>, repo: Option<&str>) {
+    match github::sync(owner, repo) {
+        Ok(()) => {
+            println!("{}", "Sync complete!".green().bold());
+        }
+        Err(e) => {
+            println!("{}: {}", "Error".red(), e);
+        }
+    }
+}
+
+fn issues_command(project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    issues::list_issues(&sessions);
+}
+
+fn issue_detail_command(issue_number: u32, project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    issues::show_issue_detail(issue_number, &sessions);
 }
