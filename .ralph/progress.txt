@@ -1,0 +1,12 @@
+# Ralph Progress Log
+Started: 2026-01-13
+---
+
+## Codebase Patterns
+
+- Pattern: Use `gh` CLI for GitHub API calls (already authenticated)
+- Pattern: Parse Claude logs from `~/.claude/projects/{project-encoded}/{session-id}.jsonl`
+- Pattern: Sessions have `gitBranch` field that links to PRs
+- Gotcha: Branch names are in Claude logs, but issue links are in PRs (via "Closes #N")
+
+---

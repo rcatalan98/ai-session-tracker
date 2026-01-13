@@ -1,0 +1,20 @@
+{
+  "project": "ai-session-tracker",
+  "branchName": "ralph/example-feature",
+  "description": "Example PRD for Ralph autonomous agent",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Example Story",
+      "description": "Brief description of what needs to be built",
+      "acceptanceCriteria": [
+        "Criterion 1",
+        "Criterion 2",
+        "cargo fmt --check && cargo clippy && cargo test passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Hints for implementation. Reference existing patterns."
+    }
+  ]
+}

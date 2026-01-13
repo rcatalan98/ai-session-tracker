@@ -1,0 +1,69 @@
+{
+  "project": "ai-session-tracker",
+  "branchName": "ralph/github-integration",
+  "description": "Add GitHub integration to track time per issue by linking PRs to Claude sessions",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "GitHub sync command",
+      "description": "Add `aist sync` command that fetches merged PRs from GitHub and caches PR→Issue→Branch mappings",
+      "acceptanceCriteria": [
+        "aist sync fetches merged PRs using `gh pr list --state merged`",
+        "Extracts branch name and closed issues from each PR",
+        "Caches data in ~/.config/aist/repos/{owner}-{repo}.json",
+        "Shows progress during sync (X PRs fetched)",
+        "Auto-detects repo from git remote if not specified",
+        "cargo fmt --check && cargo clippy && cargo test passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": "Create src/github.rs. Use std::process::Command to call `gh pr list --json number,headRefName,body,mergedAt,title --state merged`. Parse 'Closes #N' from PR body. Store in JSON file."
+    },
+    {
+      "id": "US-002",
+      "title": "Issue list command",
+      "description": "Add `aist issues` command that shows time spent per GitHub issue",
+      "acceptanceCriteria": [
+        "aist issues lists issues with time metrics",
+        "Links sessions to issues via PR branch names",
+        "Shows: issue number, title, total time, session count",
+        "Sorted by total time descending",
+        "Shows total time across all issues",
+        "cargo fmt --check && cargo clippy && cargo test passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Create src/issues.rs. Load GitHub cache, match sessions by gitBranch field. Sum duration from matching sessions. Format similar to bottlenecks output."
+    },
+    {
+      "id": "US-003",
+      "title": "Issue detail command",
+      "description": "Add `aist issue <N>` command that shows detailed metrics for a specific issue",
+      "acceptanceCriteria": [
+        "aist issue 4 shows details for issue #4",
+        "Shows: status, branch, total time, session count",
+        "Lists individual sessions with timestamps and duration",
+        "Shows time breakdown by activity type (productive, reading, etc)",
+        "cargo fmt --check && cargo clippy && cargo test passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Add to src/issues.rs. Reuse flamegraph::extract_spans for activity breakdown. Format similar to timeline output."
+    },
+    {
+      "id": "US-004",
+      "title": "Flamegraph by issue",
+      "description": "Add --group-by issue option to flamegraph command",
+      "acceptanceCriteria": [
+        "aist flame --group-by issue generates SVG grouped by issue",
+        "Each row shows an issue with time breakdown",
+        "Color-coded by activity type",
+        "Sorted by total time descending",
+        "cargo fmt --check && cargo clippy && cargo test passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Add generate_svg_by_issue to src/flamegraph.rs. Similar pattern to generate_svg_by_project but group by issue number instead."
+    }
+  ]
+}
