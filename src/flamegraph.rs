@@ -545,6 +545,15 @@ pub fn generate_svg_by_project(sessions: &[Session], output_path: &Path) -> std:
     Ok(())
 }
 
+/// PR data for grouping sessions
+struct PrGroup<'a> {
+    pr_number: u32,
+    title: String,
+    sessions: Vec<&'a Session>,
+    total_mins: f64,
+    closed_issues: Vec<u32>,
+}
+
 /// Issue data for grouping sessions
 struct IssueGroup<'a> {
     issue_number: u32,
@@ -728,6 +737,257 @@ pub fn generate_svg_by_issue(sessions: &[Session], output_path: &Path) -> std::i
     file.write_all(svg.as_bytes())?;
 
     Ok(())
+}
+
+/// Generate an SVG flamegraph grouped by GitHub PR
+pub fn generate_svg_by_pr(sessions: &[Session], output_path: &Path) -> std::io::Result<()> {
+    // Load GitHub cache
+    let cache = load_current_repo_cache().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "No GitHub cache found. Run `aist sync` first.",
+        )
+    })?;
+
+    let prs = group_sessions_by_pr(sessions, &cache);
+
+    if prs.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "No PRs found with matching sessions",
+        ));
+    }
+
+    let width = 1200;
+    let row_height = 40;
+    let margin = 40;
+    let legend_height = 60;
+
+    let max_prs = 15;
+    let prs: Vec<_> = prs.into_iter().take(max_prs).collect();
+
+    let height = margin * 2 + legend_height + (prs.len() * row_height);
+
+    let mut svg = String::new();
+
+    // SVG header
+    svg.push_str(&format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}">
+<style>
+  .pr-label {{ font: bold 12px monospace; fill: #374151; }}
+  .stats-label {{ font: 10px monospace; fill: #6b7280; }}
+  .legend-label {{ font: 12px sans-serif; fill: #374151; }}
+  .title {{ font: bold 16px sans-serif; fill: #111827; }}
+  rect.span {{ stroke: #fff; stroke-width: 1; }}
+  rect.span:hover {{ stroke: #000; stroke-width: 2; opacity: 0.8; }}
+</style>
+<rect width="100%" height="100%" fill="{}"/>
+"#,
+        width, height, width, height, "#f9fafb"
+    ));
+
+    // Title
+    svg.push_str(&format!(
+        r#"<text x="{}" y="25" class="title">AI Session Flamegraph (by PR)</text>"#,
+        margin
+    ));
+
+    // Legend
+    let legend_y = 45;
+    let legend_items = [
+        (ActivityType::Productive, 0),
+        (ActivityType::Reading, 120),
+        (ActivityType::Executing, 260),
+        (ActivityType::Error, 380),
+        (ActivityType::Gap, 470),
+        (ActivityType::Thinking, 570),
+    ];
+
+    for (activity, x_offset) in legend_items {
+        svg.push_str(&format!(
+            r#"<rect x="{}" y="{}" width="14" height="14" fill="{}" rx="2"/>
+<text x="{}" y="{}" class="legend-label">{}</text>"#,
+            margin + x_offset,
+            legend_y,
+            activity.color(),
+            margin + x_offset + 18,
+            legend_y + 11,
+            activity.label()
+        ));
+    }
+
+    let chart_y_start = margin + legend_height;
+    let chart_width = width - margin * 2 - 180;
+
+    // Draw each PR
+    for (i, pr) in prs.iter().enumerate() {
+        let y = chart_y_start + (i * row_height);
+
+        // Collect all spans from all sessions for this PR
+        let mut all_spans: Vec<TimeSpan> = Vec::new();
+        for session in &pr.sessions {
+            all_spans.extend(extract_spans(session));
+        }
+
+        // Calculate time breakdown by activity type
+        let mut time_by_activity: HashMap<ActivityType, f64> = HashMap::new();
+        for span in &all_spans {
+            let duration = (span.end - span.start).num_seconds() as f64 / 60.0;
+            *time_by_activity.entry(span.activity).or_insert(0.0) += duration;
+        }
+
+        // PR label - escape for XML
+        let display_title = if pr.title.len() > 20 {
+            format!("{}...", &pr.title[..17])
+        } else {
+            pr.title.clone()
+        };
+        let display_title = display_title
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
+
+        // Issues closed by this PR
+        let issues_str = if pr.closed_issues.is_empty() {
+            String::new()
+        } else {
+            format!(
+                " → {}",
+                pr.closed_issues
+                    .iter()
+                    .map(|i| format!("#{}", i))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )
+        };
+
+        svg.push_str(&format!(
+            r#"<text x="{}" y="{}" class="pr-label">PR #{} {}</text>
+<text x="{}" y="{}" class="stats-label">{} sessions, {}{}</text>"#,
+            margin,
+            y + row_height / 2,
+            pr.pr_number,
+            display_title,
+            margin,
+            y + row_height / 2 + 14,
+            pr.sessions.len(),
+            format_duration(pr.total_mins),
+            issues_str
+        ));
+
+        // Background bar
+        let bar_x = margin + 180;
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#e5e7eb\" rx=\"3\"/>",
+            bar_x,
+            y + 4,
+            chart_width,
+            row_height - 8
+        ));
+
+        // Draw proportional blocks for each activity type
+        let mut x_offset = 0.0;
+        let activities = [
+            ActivityType::Productive,
+            ActivityType::Reading,
+            ActivityType::Executing,
+            ActivityType::Error,
+            ActivityType::Gap,
+            ActivityType::Thinking,
+        ];
+
+        for activity in activities {
+            let activity_time = time_by_activity.get(&activity).copied().unwrap_or(0.0);
+            if activity_time > 0.0 && pr.total_mins > 0.0 {
+                let width_ratio = activity_time / pr.total_mins;
+                let block_width = (width_ratio * chart_width as f64) as usize;
+
+                if block_width >= 1 {
+                    let percent = (width_ratio * 100.0) as usize;
+                    svg.push_str(&format!(
+                        r#"<rect class="span" x="{}" y="{}" width="{}" height="{}" fill="{}" rx="2">
+<title>{}: {} ({}%)</title>
+</rect>"#,
+                        bar_x + x_offset as usize,
+                        y + 4,
+                        block_width,
+                        row_height - 8,
+                        activity.color(),
+                        activity.label(),
+                        format_duration(activity_time),
+                        percent
+                    ));
+                    x_offset += block_width as f64;
+                }
+            }
+        }
+    }
+
+    svg.push_str("</svg>");
+
+    let mut file = File::create(output_path)?;
+    file.write_all(svg.as_bytes())?;
+
+    Ok(())
+}
+
+/// Group sessions by GitHub PR number
+#[allow(clippy::type_complexity)]
+fn group_sessions_by_pr<'a>(sessions: &'a [Session], cache: &RepoCache) -> Vec<PrGroup<'a>> {
+    // Build branch -> PR mapping
+    let branch_to_pr: HashMap<&str, &crate::github::PrMapping> = cache
+        .prs
+        .iter()
+        .map(|pr| (pr.branch.as_str(), pr))
+        .collect();
+
+    // Build PR -> (title, sessions, total_mins, closed_issues)
+    let mut pr_data: HashMap<u32, (String, Vec<&'a Session>, f64, Vec<u32>)> = HashMap::new();
+
+    for session in sessions {
+        let branch = match &session.git_branch {
+            Some(b) => b.as_str(),
+            None => continue,
+        };
+
+        let pr = match branch_to_pr.get(branch) {
+            Some(pr) => pr,
+            None => continue,
+        };
+
+        let duration_mins = match (session.start_time, session.end_time) {
+            (Some(start), Some(end)) => (end - start).num_minutes() as f64,
+            _ => 0.0,
+        };
+
+        let entry = pr_data
+            .entry(pr.pr_number)
+            .or_insert_with(|| (pr.title.clone(), Vec::new(), 0.0, pr.closed_issues.clone()));
+        entry.1.push(session);
+        entry.2 += duration_mins;
+    }
+
+    // Convert to Vec and sort by total time descending
+    let mut prs: Vec<PrGroup> = pr_data
+        .into_iter()
+        .map(
+            |(pr_number, (title, sessions, total_mins, closed_issues))| PrGroup {
+                pr_number,
+                title,
+                sessions,
+                total_mins,
+                closed_issues,
+            },
+        )
+        .collect();
+
+    prs.sort_by(|a, b| {
+        b.total_mins
+            .partial_cmp(&a.total_mins)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    prs
 }
 
 /// Group sessions by GitHub issue number

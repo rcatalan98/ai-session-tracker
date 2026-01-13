@@ -4,6 +4,7 @@ mod github;
 mod issues;
 mod metrics;
 mod parser;
+mod prs;
 mod report;
 mod timeline;
 
@@ -87,7 +88,7 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
 
-        /// Group by: session (default), project, or issue
+        /// Group by: session (default), project, pr, or issue
         #[arg(short, long, default_value = "session")]
         group_by: String,
     },
@@ -113,6 +114,23 @@ enum Commands {
     /// Show detailed metrics for a specific GitHub issue
     Issue {
         /// Issue number (e.g., 4)
+        number: u32,
+
+        /// Filter by project path
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+    },
+
+    /// List GitHub PRs with time metrics
+    Prs {
+        /// Filter by project path
+        #[arg(short, long)]
+        project: Option<PathBuf>,
+    },
+
+    /// Show detailed metrics for a specific GitHub PR
+    Pr {
+        /// PR number (e.g., 12)
         number: u32,
 
         /// Filter by project path
@@ -155,6 +173,12 @@ fn main() {
         }
         Commands::Issue { number, project } => {
             issue_detail_command(number, project);
+        }
+        Commands::Prs { project } => {
+            prs_command(project);
+        }
+        Commands::Pr { number, project } => {
+            pr_detail_command(number, project);
         }
     }
 }
@@ -409,6 +433,7 @@ fn flame_command(output: PathBuf, project: Option<PathBuf>, group_by: &str) {
 
     let result = match group_by {
         "project" => flamegraph::generate_svg_by_project(&sessions, &output),
+        "pr" => flamegraph::generate_svg_by_pr(&sessions, &output),
         "issue" => flamegraph::generate_svg_by_issue(&sessions, &output),
         _ => flamegraph::generate_svg(&sessions, &output),
     };
@@ -458,4 +483,26 @@ fn issue_detail_command(issue_number: u32, project: Option<PathBuf>) {
     }
 
     issues::show_issue_detail(issue_number, &sessions);
+}
+
+fn prs_command(project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    prs::list_prs(&sessions);
+}
+
+fn pr_detail_command(pr_number: u32, project: Option<PathBuf>) {
+    let sessions = parser::load_sessions(project.as_deref());
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    prs::show_pr_detail(pr_number, &sessions);
 }
