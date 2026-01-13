@@ -87,7 +87,7 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
 
-        /// Group by: session (default) or project
+        /// Group by: session (default), project, or issue
         #[arg(short, long, default_value = "session")]
         group_by: String,
     },
@@ -409,6 +409,7 @@ fn flame_command(output: PathBuf, project: Option<PathBuf>, group_by: &str) {
 
     let result = match group_by {
         "project" => flamegraph::generate_svg_by_project(&sessions, &output),
+        "issue" => flamegraph::generate_svg_by_issue(&sessions, &output),
         _ => flamegraph::generate_svg(&sessions, &output),
     };
 

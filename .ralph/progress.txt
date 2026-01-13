@@ -33,3 +33,26 @@ Started: 2026-01-13
   - calculate_issue_metrics() is reusable for US-003/US-004
   - Added tests for edge cases: no branch, no matching PR, PR with no issues
 ---
+
+## 2026-01-13 - US-003: Issue detail command
+- Implemented `aist issue <N>` command to show detailed metrics for a specific issue
+- Files changed: src/issues.rs, src/main.rs
+- **Learnings for future iterations:**
+  - Reuse flamegraph::extract_spans for activity breakdown across sessions
+  - IssueSession struct links session reference with calculated duration
+  - Use chrono::Local for user-friendly timestamp display
+  - Activity breakdown uses HashMap<ActivityType, f64> to aggregate time
+  - Colored bar visualization scales percentage/2 to keep it readable
+  - format_timestamp() converts UTC to local time for display
+---
+
+## 2026-01-13 - US-004: Flamegraph by issue
+- Implemented `aist flame --group-by issue` to generate SVG grouped by issue
+- Files changed: src/flamegraph.rs, src/main.rs
+- **Learnings for future iterations:**
+  - Reuse group_sessions_by_issue helper similar to issues.rs pattern
+  - IssueGroup struct holds issue_number, title, sessions, total_mins
+  - XML escape special characters (&, <, >) in issue titles for SVG
+  - Same activity color scheme and proportional bars as generate_svg_by_project
+  - Load GitHub cache at start, return clear error if not found
+---

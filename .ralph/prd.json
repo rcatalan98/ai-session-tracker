@@ -47,7 +47,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Add to src/issues.rs. Reuse flamegraph::extract_spans for activity breakdown. Format similar to timeline output."
     },
     {
@@ -62,7 +62,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Add generate_svg_by_issue to src/flamegraph.rs. Similar pattern to generate_svg_by_project but group by issue number instead."
     }
   ]
