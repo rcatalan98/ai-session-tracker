@@ -5,7 +5,7 @@ use std::io::Write;
 use std::path::Path;
 
 /// Activity type for coloring
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ActivityType {
     Productive, // Edit, Write - making changes
     Reading,    // Read, Grep, Glob - exploring
@@ -351,6 +351,196 @@ fn format_duration(minutes: f64) -> String {
     } else {
         format!("{:.0}m", minutes)
     }
+}
+
+/// Generate an SVG flamegraph grouped by project
+pub fn generate_svg_by_project(sessions: &[Session], output_path: &Path) -> std::io::Result<()> {
+    use std::collections::HashMap;
+
+    let width = 1200;
+    let row_height = 40;
+    let margin = 40;
+    let legend_height = 60;
+
+    // Group sessions by project
+    let mut by_project: HashMap<String, Vec<&Session>> = HashMap::new();
+    for session in sessions {
+        if session.start_time.is_some() && session.end_time.is_some() {
+            let project_name = extract_project_name(&session.project);
+            by_project.entry(project_name).or_default().push(session);
+        }
+    }
+
+    if by_project.is_empty() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "No sessions with valid timestamps",
+        ));
+    }
+
+    // Calculate total time per project and sort by total time
+    let mut projects: Vec<(String, Vec<&Session>, f64)> = by_project
+        .into_iter()
+        .map(|(name, sessions)| {
+            let total_mins: f64 = sessions
+                .iter()
+                .filter_map(|s| match (s.start_time, s.end_time) {
+                    (Some(start), Some(end)) => Some((end - start).num_seconds() as f64 / 60.0),
+                    _ => None,
+                })
+                .sum();
+            (name, sessions, total_mins)
+        })
+        .collect();
+
+    projects.sort_by(|a, b| b.2.partial_cmp(&a.2).unwrap_or(std::cmp::Ordering::Equal));
+
+    let max_projects = 15;
+    let projects: Vec<_> = projects.into_iter().take(max_projects).collect();
+
+    let height = margin * 2 + legend_height + (projects.len() * row_height);
+
+    let mut svg = String::new();
+
+    // SVG header
+    svg.push_str(&format!(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {} {}" width="{}" height="{}">
+<style>
+  .project-label {{ font: bold 12px monospace; fill: #374151; }}
+  .stats-label {{ font: 10px monospace; fill: #6b7280; }}
+  .legend-label {{ font: 12px sans-serif; fill: #374151; }}
+  .title {{ font: bold 16px sans-serif; fill: #111827; }}
+  rect.span {{ stroke: #fff; stroke-width: 1; }}
+  rect.span:hover {{ stroke: #000; stroke-width: 2; opacity: 0.8; }}
+</style>
+<rect width="100%" height="100%" fill="{}"/>
+"#,
+        width, height, width, height, "#f9fafb"
+    ));
+
+    // Title
+    svg.push_str(&format!(
+        r#"<text x="{}" y="25" class="title">AI Session Flamegraph (by Project)</text>"#,
+        margin
+    ));
+
+    // Legend
+    let legend_y = 45;
+    let legend_items = [
+        (ActivityType::Productive, 0),
+        (ActivityType::Reading, 120),
+        (ActivityType::Executing, 260),
+        (ActivityType::Error, 380),
+        (ActivityType::Gap, 470),
+        (ActivityType::Thinking, 570),
+    ];
+
+    for (activity, x_offset) in legend_items {
+        svg.push_str(&format!(
+            r#"<rect x="{}" y="{}" width="14" height="14" fill="{}" rx="2"/>
+<text x="{}" y="{}" class="legend-label">{}</text>"#,
+            margin + x_offset,
+            legend_y,
+            activity.color(),
+            margin + x_offset + 18,
+            legend_y + 11,
+            activity.label()
+        ));
+    }
+
+    let chart_y_start = margin + legend_height;
+    let chart_width = width - margin * 2 - 180;
+
+    // Draw each project
+    for (i, (project_name, project_sessions, total_mins)) in projects.iter().enumerate() {
+        let y = chart_y_start + (i * row_height);
+
+        // Collect all spans from all sessions for this project
+        let mut all_spans: Vec<TimeSpan> = Vec::new();
+        for session in project_sessions {
+            all_spans.extend(extract_spans(session));
+        }
+
+        // Calculate time breakdown by activity type
+        let mut time_by_activity: HashMap<ActivityType, f64> = HashMap::new();
+        for span in &all_spans {
+            let duration = (span.end - span.start).num_seconds() as f64 / 60.0;
+            *time_by_activity.entry(span.activity).or_insert(0.0) += duration;
+        }
+
+        // Project label
+        let display_name = if project_name.len() > 20 {
+            format!("{}...", &project_name[..17])
+        } else {
+            project_name.clone()
+        };
+
+        svg.push_str(&format!(
+            r#"<text x="{}" y="{}" class="project-label">{}</text>
+<text x="{}" y="{}" class="stats-label">{} sessions, {}</text>"#,
+            margin,
+            y + row_height / 2,
+            display_name,
+            margin,
+            y + row_height / 2 + 14,
+            project_sessions.len(),
+            format_duration(*total_mins)
+        ));
+
+        // Background bar
+        let bar_x = margin + 180;
+        svg.push_str(&format!(
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"#e5e7eb\" rx=\"3\"/>",
+            bar_x,
+            y + 4,
+            chart_width,
+            row_height - 8
+        ));
+
+        // Draw proportional blocks for each activity type
+        let mut x_offset = 0.0;
+        let activities = [
+            ActivityType::Productive,
+            ActivityType::Reading,
+            ActivityType::Executing,
+            ActivityType::Error,
+            ActivityType::Gap,
+            ActivityType::Thinking,
+        ];
+
+        for activity in activities {
+            let activity_time = time_by_activity.get(&activity).copied().unwrap_or(0.0);
+            if activity_time > 0.0 && *total_mins > 0.0 {
+                let width_ratio = activity_time / total_mins;
+                let block_width = (width_ratio * chart_width as f64) as usize;
+
+                if block_width >= 1 {
+                    let percent = (width_ratio * 100.0) as usize;
+                    svg.push_str(&format!(
+                        r#"<rect class="span" x="{}" y="{}" width="{}" height="{}" fill="{}" rx="2">
+<title>{}: {} ({}%)</title>
+</rect>"#,
+                        bar_x + x_offset as usize,
+                        y + 4,
+                        block_width,
+                        row_height - 8,
+                        activity.color(),
+                        activity.label(),
+                        format_duration(activity_time),
+                        percent
+                    ));
+                    x_offset += block_width as f64;
+                }
+            }
+        }
+    }
+
+    svg.push_str("</svg>");
+
+    let mut file = File::create(output_path)?;
+    file.write_all(svg.as_bytes())?;
+
+    Ok(())
 }
 
 #[cfg(test)]

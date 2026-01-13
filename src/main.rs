@@ -84,6 +84,10 @@ enum Commands {
         /// Filter by project path
         #[arg(short, long)]
         project: Option<PathBuf>,
+
+        /// Group by: session (default) or project
+        #[arg(short, long, default_value = "session")]
+        group_by: String,
     },
 }
 
@@ -106,8 +110,12 @@ fn main() {
         Commands::List { limit, project } => {
             list_command(limit, project);
         }
-        Commands::Flame { output, project } => {
-            flame_command(output, project);
+        Commands::Flame {
+            output,
+            project,
+            group_by,
+        } => {
+            flame_command(output, project, &group_by);
         }
     }
 }
@@ -352,7 +360,7 @@ fn list_command(limit: usize, project: Option<PathBuf>) {
     );
 }
 
-fn flame_command(output: PathBuf, project: Option<PathBuf>) {
+fn flame_command(output: PathBuf, project: Option<PathBuf>, group_by: &str) {
     let sessions = parser::load_sessions(project.as_deref());
 
     if sessions.is_empty() {
@@ -360,7 +368,12 @@ fn flame_command(output: PathBuf, project: Option<PathBuf>) {
         return;
     }
 
-    match flamegraph::generate_svg(&sessions, &output) {
+    let result = match group_by {
+        "project" => flamegraph::generate_svg_by_project(&sessions, &output),
+        _ => flamegraph::generate_svg(&sessions, &output),
+    };
+
+    match result {
         Ok(()) => {
             println!("{} Generated flamegraph: {}", "✓".green(), output.display());
             println!(
