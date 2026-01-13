@@ -147,7 +147,7 @@ pub fn filter_by_period(sessions: &[Session], period: &str) -> Vec<Session> {
         "day" => now - Duration::days(1),
         "week" => now - Duration::weeks(1),
         "month" => now - Duration::days(30),
-        "all" | _ => return sessions.to_vec(),
+        _ => return sessions.to_vec(),
     };
 
     sessions

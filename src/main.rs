@@ -1,5 +1,6 @@
 mod bottlenecks;
 mod flamegraph;
+mod github;
 mod metrics;
 mod parser;
 mod report;
@@ -89,6 +90,17 @@ enum Commands {
         #[arg(short, long, default_value = "session")]
         group_by: String,
     },
+
+    /// Sync GitHub PRs and cache PR→Issue→Branch mappings
+    Sync {
+        /// GitHub repository owner (auto-detected from git remote if not specified)
+        #[arg(long)]
+        owner: Option<String>,
+
+        /// GitHub repository name (auto-detected from git remote if not specified)
+        #[arg(long)]
+        repo: Option<String>,
+    },
 }
 
 fn main() {
@@ -116,6 +128,9 @@ fn main() {
             group_by,
         } => {
             flame_command(output, project, &group_by);
+        }
+        Commands::Sync { owner, repo } => {
+            sync_command(owner.as_deref(), repo.as_deref());
         }
     }
 }
@@ -383,6 +398,17 @@ fn flame_command(output: PathBuf, project: Option<PathBuf>, group_by: &str) {
         }
         Err(e) => {
             println!("{}: Failed to generate flamegraph: {}", "Error".red(), e);
+        }
+    }
+}
+
+fn sync_command(owner: Option<&str>, repo: Option<&str>) {
+    match github::sync(owner, repo) {
+        Ok(()) => {
+            println!("{}", "Sync complete!".green().bold());
+        }
+        Err(e) => {
+            println!("{}: {}", "Error".red(), e);
         }
     }
 }
