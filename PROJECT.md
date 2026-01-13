@@ -9,9 +9,11 @@
 **Phase 1 (MVP): COMPLETE**
 - Session parsing, metrics, bottlenecks, timeline, report, flamegraph
 
-**Phase 2 (GitHub Integration): IN PROGRESS**
-- Link sessions to GitHub issues via PRs
-- Track time per issue/feature
+**Phase 2 (GitHub Integration): COMPLETE**
+- `aist sync` - Fetch PR→Issue→Branch mappings from GitHub
+- `aist issues` - List time spent per issue
+- `aist issue <N>` - Detailed breakdown per issue
+- `aist flame --group-by issue` - Flamegraph grouped by issue
 
 ---
 
@@ -40,11 +42,14 @@ Time: 2h 15m across 3 sessions
 | `aist report` | Weekly efficiency report with recommendations |
 | `aist timeline` | Visual timeline of session activities |
 | `aist list` | List recent sessions |
-| `aist flame` | SVG flamegraph (by session or project) |
+| `aist flame` | SVG flamegraph (by session, project, or issue) |
+| `aist sync` | Fetch PR→Issue→Branch mappings from GitHub |
+| `aist issues` | List time spent per GitHub issue |
+| `aist issue <N>` | Detailed breakdown for specific issue |
 
 ---
 
-## Phase 2: GitHub Integration
+## Phase 2: GitHub Integration (COMPLETE)
 
 ### Architecture
 
@@ -66,11 +71,11 @@ aist issues / aist issue <N>
 
 | Issue | Title | Status |
 |-------|-------|--------|
-| #13 | GitHub sync: fetch PR→Issue mappings | Open |
-| #14 | Issue metrics: show time per GitHub issue | Open |
-| #15 | Flamegraph by issue | Open |
+| #13 | GitHub sync: fetch PR→Issue mappings | ✓ Closed |
+| #14 | Issue metrics: show time per GitHub issue | ✓ Closed |
+| #15 | Flamegraph by issue | ✓ Closed |
 
-### New Commands (Planned)
+### Commands
 
 ```bash
 aist sync                    # Fetch PR data from GitHub
@@ -134,6 +139,8 @@ Gaps:        █░░░░░░░░░░░░░░░░░░░  5%
 | GitHub API | `gh` CLI | No OAuth setup, uses existing auth |
 | Storage | JSON files | Simple, no database needed |
 | Linking | PR → Branch → Session | Reliable, doesn't depend on branch naming |
+| CI | GitHub Actions | fmt, clippy, build, test on every push/PR |
+| Git hooks | pre-commit, pre-push | Local validation before pushing |
 
 ---
 
@@ -146,4 +153,4 @@ Gaps:        █░░░░░░░░░░░░░░░░░░░  5%
 
 ---
 
-*Last updated: 2026-01-13*
+*Last updated: 2026-01-14*
