@@ -45,7 +45,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Modify src/parser.rs. Claude transcripts have 'usage' field with input_tokens and output_tokens in assistant messages. Check actual transcript format first."
     },
     {

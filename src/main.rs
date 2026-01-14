@@ -1,4 +1,5 @@
 mod bottlenecks;
+mod cost;
 mod export;
 mod flamegraph;
 mod github;
@@ -161,6 +162,17 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Show token usage and estimated API cost
+    Cost {
+        /// Report period: day, week, month, all
+        #[arg(short, long, default_value = "all")]
+        period: String,
+
+        /// Show per-session breakdown
+        #[arg(short, long)]
+        detailed: bool,
+    },
 }
 
 fn main() {
@@ -215,6 +227,9 @@ fn main() {
             output,
         } => {
             export_command(owner.as_deref(), repo.as_deref(), &period, output);
+        }
+        Commands::Cost { period, detailed } => {
+            cost_command(&period, detailed);
         }
     }
 }
@@ -634,4 +649,15 @@ fn export_command(owner: Option<&str>, repo: Option<&str>, period: &str, output:
             println!("{}: {}", "Error".red(), e);
         }
     }
+}
+
+fn cost_command(period: &str, detailed: bool) {
+    let sessions = parser::load_sessions(None);
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    cost::print_cost_summary(&sessions, period, detailed);
 }
