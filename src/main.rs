@@ -1,4 +1,5 @@
 mod bottlenecks;
+mod export;
 mod flamegraph;
 mod github;
 mod issues;
@@ -137,6 +138,25 @@ enum Commands {
         #[arg(short, long)]
         project: Option<PathBuf>,
     },
+
+    /// Export an HTML report for a specific GitHub repository
+    Export {
+        /// GitHub repository owner (auto-detected from git remote if not specified)
+        #[arg(long)]
+        owner: Option<String>,
+
+        /// GitHub repository name (auto-detected from git remote if not specified)
+        #[arg(long)]
+        repo: Option<String>,
+
+        /// Report period: day, week, month, all
+        #[arg(short, long, default_value = "all")]
+        period: String,
+
+        /// Output HTML path (default: report-{owner}-{repo}.html)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() {
@@ -179,6 +199,14 @@ fn main() {
         }
         Commands::Pr { number, project } => {
             pr_detail_command(number, project);
+        }
+        Commands::Export {
+            owner,
+            repo,
+            period,
+            output,
+        } => {
+            export_command(owner.as_deref(), repo.as_deref(), &period, output);
         }
     }
 }
@@ -505,4 +533,97 @@ fn pr_detail_command(pr_number: u32, project: Option<PathBuf>) {
     }
 
     prs::show_pr_detail(pr_number, &sessions);
+}
+
+fn export_command(owner: Option<&str>, repo: Option<&str>, period: &str, output: Option<PathBuf>) {
+    // Auto-detect repo if not specified
+    let (owner, repo) = match (owner, repo) {
+        (Some(o), Some(r)) => (o.to_string(), r.to_string()),
+        _ => match github::detect_repo() {
+            Some((o, r)) => (o, r),
+            None => {
+                println!(
+                    "{}: Could not detect repo from git remote. Use --owner and --repo flags.",
+                    "Error".red()
+                );
+                return;
+            }
+        },
+    };
+
+    println!(
+        "{} Generating report for {}/{}...",
+        "→".blue(),
+        owner.bold(),
+        repo.bold()
+    );
+
+    // Load all sessions
+    let sessions = parser::load_sessions(None);
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    // Filter sessions by repo
+    let (filtered, cache) = export::filter_sessions_by_repo(&sessions, &owner, &repo);
+
+    let cache = match cache {
+        Some(c) => c,
+        None => {
+            println!(
+                "{}: No GitHub cache found for {}/{}. Run `aist sync` first.",
+                "Error".red(),
+                owner,
+                repo
+            );
+            return;
+        }
+    };
+
+    if filtered.is_empty() {
+        println!("{}", "No sessions found matching this repo's PRs.".yellow());
+        println!(
+            "{}",
+            "Tip: Make sure session git branches match PR branches.".dimmed()
+        );
+        return;
+    }
+
+    // Filter by period
+    let filtered = export::filter_sessions_by_period(&filtered, period);
+
+    if filtered.is_empty() {
+        println!(
+            "{}",
+            format!("No sessions found in the '{}' period.", period).yellow()
+        );
+        return;
+    }
+
+    println!(
+        "{} Found {} sessions matching {} PRs",
+        "✓".green(),
+        filtered.len(),
+        cache.prs.len()
+    );
+
+    // Determine output path
+    let output_path =
+        output.unwrap_or_else(|| PathBuf::from(format!("report-{}-{}.html", owner, repo)));
+
+    // Generate HTML report
+    match export::generate_html_report(&filtered, &cache, &output_path) {
+        Ok(()) => {
+            println!(
+                "{} Generated report: {}",
+                "✓".green(),
+                output_path.display()
+            );
+        }
+        Err(e) => {
+            println!("{}: {}", "Error".red(), e);
+        }
+    }
 }
