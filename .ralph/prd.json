@@ -61,7 +61,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Create src/cost.rs. Load all sessions, sum token counts, calculate cost. Format similar to report output with colored numbers."
     },
     {
