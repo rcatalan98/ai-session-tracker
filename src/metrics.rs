@@ -251,6 +251,8 @@ mod tests {
                     text_content: None,
                 },
             ],
+            token_input: 1000,
+            token_output: 500,
         }
     }
 

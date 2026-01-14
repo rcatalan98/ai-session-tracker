@@ -30,7 +30,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Modify src/main.rs to add --show-prompts flag. Update display_bottlenecks in bottlenecks.rs to optionally show prompts."
     },
     {

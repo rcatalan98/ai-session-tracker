@@ -413,6 +413,8 @@ mod tests {
             start_time: Some(start),
             end_time: Some(end),
             messages: vec![],
+            token_input: 0,
+            token_output: 0,
         }
     }
 

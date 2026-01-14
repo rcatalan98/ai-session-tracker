@@ -483,6 +483,8 @@ mod tests {
                     text_content: None,
                 },
             ],
+            token_input: 0,
+            token_output: 0,
         }
     }
 

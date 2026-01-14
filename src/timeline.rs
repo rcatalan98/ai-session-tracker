@@ -382,6 +382,8 @@ mod tests {
                 start_time: None,
                 end_time: None,
                 messages: vec![],
+                token_input: 0,
+                token_output: 0,
             },
             Session {
                 session_id: "xyz789ghi".to_string(),
@@ -391,6 +393,8 @@ mod tests {
                 start_time: None,
                 end_time: None,
                 messages: vec![],
+                token_input: 0,
+                token_output: 0,
             },
         ];
 
