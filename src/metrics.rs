@@ -214,6 +214,7 @@ mod tests {
                     timestamp: Some(start),
                     tool_calls: vec![],
                     tool_results: vec![],
+                    text_content: Some("help me with this".to_string()),
                 },
                 Message {
                     msg_type: MessageType::Assistant,
@@ -229,6 +230,7 @@ mod tests {
                         },
                     ],
                     tool_results: vec![],
+                    text_content: None,
                 },
                 Message {
                     msg_type: MessageType::User,
@@ -246,8 +248,11 @@ mod tests {
                             is_error: true,
                         },
                     ],
+                    text_content: None,
                 },
             ],
+            token_input: 1000,
+            token_output: 500,
         }
     }
 

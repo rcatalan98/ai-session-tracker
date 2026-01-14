@@ -1,4 +1,4 @@
-use crate::parser::{MessageType, Session};
+use crate::parser::{Message, MessageType, Session};
 use chrono::{DateTime, Utc};
 use colored::Colorize;
 use std::collections::HashMap;
@@ -24,6 +24,7 @@ pub struct ErrorLoop {
     pub end_time: Option<DateTime<Utc>>,
     pub duration_minutes: f64,
     pub error_samples: Vec<String>,
+    pub preceding_prompt: Option<String>,
 }
 
 /// >10 Read/Grep calls with 0 Edit in 10+ minutes
@@ -37,6 +38,7 @@ pub struct ExplorationSpiral {
     pub duration_minutes: f64,
     pub start_time: Option<DateTime<Utc>>,
     pub files_searched: Vec<String>,
+    pub preceding_prompt: Option<String>,
 }
 
 /// Same file edited 5+ times in a session
@@ -47,6 +49,7 @@ pub struct EditThrashing {
     pub file_path: String,
     pub edit_count: usize,
     pub duration_minutes: f64,
+    pub preceding_prompt: Option<String>,
 }
 
 /// >5 minutes between consecutive messages
@@ -58,6 +61,7 @@ pub struct LongGap {
     pub gap_minutes: f64,
     pub before_timestamp: Option<DateTime<Utc>>,
     pub after_timestamp: Option<DateTime<Utc>>,
+    pub preceding_prompt: Option<String>,
 }
 
 #[allow(dead_code)] // Methods will be used in report generation
@@ -88,6 +92,38 @@ impl Bottleneck {
             Bottleneck::LongGap(g) => &g.project,
         }
     }
+
+    pub fn preceding_prompt(&self) -> Option<&str> {
+        match self {
+            Bottleneck::ErrorLoop(e) => e.preceding_prompt.as_deref(),
+            Bottleneck::ExplorationSpiral(e) => e.preceding_prompt.as_deref(),
+            Bottleneck::EditThrashing(e) => e.preceding_prompt.as_deref(),
+            Bottleneck::LongGap(g) => g.preceding_prompt.as_deref(),
+        }
+    }
+}
+
+/// Truncate text to max chars, adding "..." if truncated
+fn truncate_prompt(text: &str, max_chars: usize) -> String {
+    if text.len() <= max_chars {
+        text.to_string()
+    } else {
+        format!("{}...", &text[..max_chars])
+    }
+}
+
+/// Find the last user message with text content before the given message index
+fn find_preceding_prompt(messages: &[Message], before_index: usize) -> Option<String> {
+    for i in (0..before_index).rev() {
+        if messages[i].msg_type == MessageType::User {
+            if let Some(text) = &messages[i].text_content {
+                if !text.is_empty() {
+                    return Some(truncate_prompt(text, 200));
+                }
+            }
+        }
+    }
+    None
 }
 
 /// Detect all bottlenecks in a set of sessions
@@ -115,13 +151,13 @@ pub fn detect_all(sessions: &[Session]) -> Vec<Bottleneck> {
 fn detect_error_loops(session: &Session) -> Vec<Bottleneck> {
     let mut bottlenecks = Vec::new();
 
-    // Build a list of (tool_name, is_error, timestamp) from tool results
-    let mut tool_results: Vec<(String, bool, Option<DateTime<Utc>>)> = Vec::new();
+    // Build a list of (tool_name, is_error, timestamp, msg_index) from tool results
+    let mut tool_results: Vec<(String, bool, Option<DateTime<Utc>>, usize)> = Vec::new();
 
     // Track tool_use_id -> tool_name mapping
     let mut tool_id_to_name: HashMap<String, String> = HashMap::new();
 
-    for msg in &session.messages {
+    for (msg_idx, msg) in session.messages.iter().enumerate() {
         // Record tool calls
         if msg.msg_type == MessageType::Assistant {
             for tc in &msg.tool_calls {
@@ -139,7 +175,7 @@ fn detect_error_loops(session: &Session) -> Vec<Bottleneck> {
                     .get(&tr.tool_use_id)
                     .cloned()
                     .unwrap_or_else(|| "unknown".to_string());
-                tool_results.push((tool_name, is_error, msg.timestamp));
+                tool_results.push((tool_name, is_error, msg.timestamp, msg_idx));
             }
         }
     }
@@ -151,6 +187,7 @@ fn detect_error_loops(session: &Session) -> Vec<Bottleneck> {
             // Found an error
             let tool_name = &tool_results[i].0;
             let start_time = tool_results[i].2;
+            let start_msg_idx = tool_results[i].3;
             let mut count = 1;
             let error_samples: Vec<String> = Vec::new();
 
@@ -169,6 +206,8 @@ fn detect_error_loops(session: &Session) -> Vec<Bottleneck> {
                     _ => 0.0,
                 };
 
+                let preceding_prompt = find_preceding_prompt(&session.messages, start_msg_idx);
+
                 bottlenecks.push(Bottleneck::ErrorLoop(ErrorLoop {
                     session_id: session.session_id.clone(),
                     project: extract_project_name(&session.project),
@@ -178,6 +217,7 @@ fn detect_error_loops(session: &Session) -> Vec<Bottleneck> {
                     end_time,
                     duration_minutes: duration.max(1.0), // At least 1 minute
                     error_samples,
+                    preceding_prompt,
                 }));
             }
 
@@ -199,15 +239,17 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
     let mut grep_count = 0;
     let mut files_searched: Vec<String> = Vec::new();
     let mut window_start: Option<DateTime<Utc>> = None;
+    let mut window_start_idx: usize = 0;
     let mut last_edit_time: Option<DateTime<Utc>> = None;
 
-    for msg in &session.messages {
+    for (msg_idx, msg) in session.messages.iter().enumerate() {
         if msg.msg_type == MessageType::Assistant {
             for tc in &msg.tool_calls {
                 match tc.name.as_str() {
                     "Read" => {
                         if window_start.is_none() {
                             window_start = msg.timestamp;
+                            window_start_idx = msg_idx;
                         }
                         read_count += 1;
                         if let Some(path) = tc.input.get("file_path").and_then(|v| v.as_str()) {
@@ -219,6 +261,7 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
                     "Grep" | "Glob" => {
                         if window_start.is_none() {
                             window_start = msg.timestamp;
+                            window_start_idx = msg_idx;
                         }
                         grep_count += 1;
                     }
@@ -230,6 +273,8 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
                                 let duration = (end - start).num_seconds() as f64 / 60.0;
 
                                 if duration >= 10.0 {
+                                    let preceding_prompt =
+                                        find_preceding_prompt(&session.messages, window_start_idx);
                                     bottlenecks.push(Bottleneck::ExplorationSpiral(
                                         ExplorationSpiral {
                                             session_id: session.session_id.clone(),
@@ -239,6 +284,7 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
                                             duration_minutes: duration,
                                             start_time: Some(start),
                                             files_searched: files_searched.clone(),
+                                            preceding_prompt,
                                         },
                                     ));
                                 }
@@ -263,6 +309,7 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
         if let (Some(start), Some(end)) = (window_start, session.end_time) {
             let duration = (end - start).num_seconds() as f64 / 60.0;
             if duration >= 10.0 {
+                let preceding_prompt = find_preceding_prompt(&session.messages, window_start_idx);
                 bottlenecks.push(Bottleneck::ExplorationSpiral(ExplorationSpiral {
                     session_id: session.session_id.clone(),
                     project: extract_project_name(&session.project),
@@ -271,6 +318,7 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
                     duration_minutes: duration,
                     start_time: Some(start),
                     files_searched,
+                    preceding_prompt,
                 }));
             }
         }
@@ -283,14 +331,14 @@ fn detect_exploration_spirals(session: &Session) -> Vec<Bottleneck> {
 fn detect_edit_thrashing(session: &Session) -> Vec<Bottleneck> {
     let mut bottlenecks = Vec::new();
 
-    // Count edits per file: (count, first_edit, last_edit)
+    // Count edits per file: (count, first_edit, last_edit, first_msg_idx)
     #[allow(clippy::type_complexity)]
     let mut edit_counts: HashMap<
         String,
-        (usize, Option<DateTime<Utc>>, Option<DateTime<Utc>>),
+        (usize, Option<DateTime<Utc>>, Option<DateTime<Utc>>, usize),
     > = HashMap::new();
 
-    for msg in &session.messages {
+    for (msg_idx, msg) in session.messages.iter().enumerate() {
         if msg.msg_type == MessageType::Assistant {
             for tc in &msg.tool_calls {
                 if tc.name == "Edit" || tc.name == "Write" {
@@ -299,6 +347,7 @@ fn detect_edit_thrashing(session: &Session) -> Vec<Bottleneck> {
                             0,
                             msg.timestamp,
                             msg.timestamp,
+                            msg_idx,
                         ));
                         entry.0 += 1;
                         entry.2 = msg.timestamp; // Update end time
@@ -309,12 +358,14 @@ fn detect_edit_thrashing(session: &Session) -> Vec<Bottleneck> {
     }
 
     // Find files with 5+ edits
-    for (file_path, (count, start, end)) in edit_counts {
+    for (file_path, (count, start, end, first_msg_idx)) in edit_counts {
         if count >= 5 {
             let duration = match (start, end) {
                 (Some(s), Some(e)) => (e - s).num_seconds() as f64 / 60.0,
                 _ => 0.0,
             };
+
+            let preceding_prompt = find_preceding_prompt(&session.messages, first_msg_idx);
 
             bottlenecks.push(Bottleneck::EditThrashing(EditThrashing {
                 session_id: session.session_id.clone(),
@@ -322,6 +373,7 @@ fn detect_edit_thrashing(session: &Session) -> Vec<Bottleneck> {
                 file_path: shorten_path(&file_path),
                 edit_count: count,
                 duration_minutes: duration.max(1.0),
+                preceding_prompt,
             }));
         }
     }
@@ -334,23 +386,30 @@ fn detect_long_gaps(session: &Session) -> Vec<Bottleneck> {
     let mut bottlenecks = Vec::new();
 
     let mut prev_timestamp: Option<DateTime<Utc>> = None;
+    let mut prev_msg_idx: usize = 0;
 
-    for msg in &session.messages {
+    for (msg_idx, msg) in session.messages.iter().enumerate() {
         if let Some(ts) = msg.timestamp {
             if let Some(prev) = prev_timestamp {
                 let gap_minutes = (ts - prev).num_seconds() as f64 / 60.0;
 
                 if gap_minutes >= 5.0 {
+                    // Find the user prompt before the gap
+                    let preceding_prompt =
+                        find_preceding_prompt(&session.messages, prev_msg_idx + 1);
+
                     bottlenecks.push(Bottleneck::LongGap(LongGap {
                         session_id: session.session_id.clone(),
                         project: extract_project_name(&session.project),
                         gap_minutes,
                         before_timestamp: Some(prev),
                         after_timestamp: Some(ts),
+                        preceding_prompt,
                     }));
                 }
             }
             prev_timestamp = Some(ts);
+            prev_msg_idx = msg_idx;
         }
     }
 
@@ -386,7 +445,7 @@ fn shorten_path(path: &str) -> String {
 }
 
 /// Print bottlenecks to terminal
-pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize) {
+pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize, show_prompts: bool) {
     if bottlenecks.is_empty() {
         println!("{}", "No bottlenecks detected.".green());
         return;
@@ -403,7 +462,7 @@ pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize) {
     );
 
     for (i, bottleneck) in bottlenecks.iter().take(limit).enumerate() {
-        print_single_bottleneck(i + 1, bottleneck);
+        print_single_bottleneck(i + 1, bottleneck, show_prompts);
         println!();
     }
 
@@ -415,7 +474,7 @@ pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize) {
     }
 }
 
-fn print_single_bottleneck(num: usize, bottleneck: &Bottleneck) {
+fn print_single_bottleneck(num: usize, bottleneck: &Bottleneck, show_prompt: bool) {
     match bottleneck {
         Bottleneck::ErrorLoop(e) => {
             println!(
@@ -512,6 +571,16 @@ fn print_single_bottleneck(num: usize, bottleneck: &Bottleneck) {
             );
         }
     }
+
+    // Show preceding prompt if requested
+    if show_prompt {
+        if let Some(prompt) = bottleneck.preceding_prompt() {
+            println!("   {}", "Prompt:".dimmed());
+            println!("   {}", format!("\"{}\"", prompt).italic().dimmed());
+        } else {
+            println!("   {}", "Prompt: (no prompt found)".dimmed());
+        }
+    }
 }
 
 #[cfg(test)]
@@ -552,7 +621,9 @@ mod tests {
             end_time: None,
             duration_minutes: 5.0,
             error_samples: vec![],
+            preceding_prompt: Some("help me fix this bug".to_string()),
         });
         assert_eq!(error_loop.wasted_minutes(), 5.0);
+        assert_eq!(error_loop.preceding_prompt(), Some("help me fix this bug"));
     }
 }

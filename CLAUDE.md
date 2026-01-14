@@ -71,7 +71,9 @@ ai-session-tracker/
 │   ├── report.rs          # Generate reports
 │   ├── flamegraph.rs      # SVG flamegraph visualization
 │   ├── github.rs          # GitHub API (PR sync, caching)
-│   └── issues.rs          # Issue-level time tracking
+│   ├── issues.rs          # Issue-level time tracking
+│   ├── prs.rs             # PR-level time tracking
+│   └── export.rs          # HTML report generation
 └── product_research/      # Research scripts and findings
 ```
 
@@ -99,12 +101,19 @@ aist timeline         # Show latest session timeline
 aist list             # List recent sessions
 aist flame            # Generate flamegraph SVG
 aist flame --group-by project  # Group by project
-aist flame --group-by issue    # Group by GitHub issue
+aist flame --group-by pr       # Group by PR
 
 # GitHub Integration
 aist sync             # Fetch merged PRs, cache mappings
+aist prs              # List time per PR
+aist pr <N>           # Detailed breakdown for PR #N
 aist issues           # List time per issue
 aist issue <N>        # Detailed breakdown for issue #N
+
+# HTML Reports
+aist export           # Generate HTML report for current repo
+aist export --period week      # Filter by time period
+aist export -o report.html     # Custom output path
 ```
 
 ---
@@ -206,8 +215,11 @@ Tool results are in user messages:
 | `aist list` | List recent sessions | ✓ |
 | `aist flame` | Flamegraph SVG visualization | ✓ |
 | `aist sync` | Sync GitHub PRs and cache mappings | ✓ |
+| `aist prs` | List time spent per PR | ✓ |
+| `aist pr <N>` | Detailed breakdown for specific PR | ✓ |
 | `aist issues` | List time spent per GitHub issue | ✓ |
 | `aist issue <N>` | Detailed breakdown for specific issue | ✓ |
+| `aist export` | Generate HTML report with flamegraph | ✓ |
 
 ---
 

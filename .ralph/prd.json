@@ -1,69 +1,83 @@
 {
   "project": "ai-session-tracker",
-  "branchName": "ralph/github-integration",
-  "description": "Add GitHub integration to track time per issue by linking PRs to Claude sessions",
+  "branchName": "feature/issue-19-prompt-quality-cost",
+  "description": "Add prompt quality signals and cost tracking to help users understand what prompts lead to bottlenecks and track API costs",
   "userStories": [
     {
       "id": "US-001",
-      "title": "GitHub sync command",
-      "description": "Add `aist sync` command that fetches merged PRs from GitHub and caches PR→Issue→Branch mappings",
+      "title": "Extract prompts before bottlenecks",
+      "description": "Parse and store the user message that preceded each detected bottleneck",
       "acceptanceCriteria": [
-        "aist sync fetches merged PRs using `gh pr list --state merged`",
-        "Extracts branch name and closed issues from each PR",
-        "Caches data in ~/.config/aist/repos/{owner}-{repo}.json",
-        "Shows progress during sync (X PRs fetched)",
-        "Auto-detects repo from git remote if not specified",
+        "Bottleneck struct includes optional `preceding_prompt: Option<String>` field",
+        "detect_bottlenecks extracts the last user message before each bottleneck",
+        "Prompt text is truncated to 200 chars if longer",
+        "Existing bottleneck detection logic unchanged",
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Create src/github.rs. Use std::process::Command to call `gh pr list --json number,headRefName,body,mergedAt,title --state merged`. Parse 'Closes #N' from PR body. Store in JSON file."
+      "notes": "Modify src/bottlenecks.rs. When detecting a bottleneck, look backwards through messages to find the preceding 'user' type message. Store first 200 chars."
     },
     {
       "id": "US-002",
-      "title": "Issue list command",
-      "description": "Add `aist issues` command that shows time spent per GitHub issue",
+      "title": "Show prompts flag for bottlenecks command",
+      "description": "Add --show-prompts flag to bottlenecks command that displays the prompt before each bottleneck",
       "acceptanceCriteria": [
-        "aist issues lists issues with time metrics",
-        "Links sessions to issues via PR branch names",
-        "Shows: issue number, title, total time, session count",
-        "Sorted by total time descending",
-        "Shows total time across all issues",
+        "aist bottlenecks --show-prompts shows prompt before each bottleneck",
+        "Prompt displayed in dimmed/italic style below bottleneck",
+        "Default behavior (no flag) unchanged",
+        "Handles missing prompts gracefully (shows 'No prompt found')",
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Create src/issues.rs. Load GitHub cache, match sessions by gitBranch field. Sum duration from matching sessions. Format similar to bottlenecks output."
+      "notes": "Modify src/main.rs to add --show-prompts flag. Update display_bottlenecks in bottlenecks.rs to optionally show prompts."
     },
     {
       "id": "US-003",
-      "title": "Issue detail command",
-      "description": "Add `aist issue <N>` command that shows detailed metrics for a specific issue",
+      "title": "Parse token usage from transcripts",
+      "description": "Extract input/output token counts from Claude transcript messages",
       "acceptanceCriteria": [
-        "aist issue 4 shows details for issue #4",
-        "Shows: status, branch, total time, session count",
-        "Lists individual sessions with timestamps and duration",
-        "Shows time breakdown by activity type (productive, reading, etc)",
+        "Session struct includes token_input and token_output fields",
+        "Parser extracts tokens from message metadata if present",
+        "Aggregates tokens across all messages in session",
+        "Handles missing token data (defaults to 0)",
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Add to src/issues.rs. Reuse flamegraph::extract_spans for activity breakdown. Format similar to timeline output."
+      "notes": "Modify src/parser.rs. Claude transcripts have 'usage' field with input_tokens and output_tokens in assistant messages. Check actual transcript format first."
     },
     {
       "id": "US-004",
-      "title": "Flamegraph by issue",
-      "description": "Add --group-by issue option to flamegraph command",
+      "title": "Cost command",
+      "description": "Add `aist cost` command that shows token usage and estimated API cost",
       "acceptanceCriteria": [
-        "aist flame --group-by issue generates SVG grouped by issue",
-        "Each row shows an issue with time breakdown",
-        "Color-coded by activity type",
-        "Sorted by total time descending",
+        "aist cost shows total tokens and estimated cost",
+        "Breaks down by input vs output tokens",
+        "Shows cost per session if --detailed flag",
+        "Supports --period filter (day, week, month, all)",
+        "Uses Claude pricing: $15/M input, $75/M output tokens",
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Add generate_svg_by_issue to src/flamegraph.rs. Similar pattern to generate_svg_by_project but group by issue number instead."
+      "notes": "Create src/cost.rs. Load all sessions, sum token counts, calculate cost. Format similar to report output with colored numbers."
+    },
+    {
+      "id": "US-005",
+      "title": "Cost per PR/Issue",
+      "description": "Show cost breakdown per PR and issue in existing commands",
+      "acceptanceCriteria": [
+        "aist prs shows cost column",
+        "aist issues shows cost column",
+        "aist pr <N> shows total cost for that PR",
+        "aist issue <N> shows total cost for that issue",
+        "cargo fmt --check && cargo clippy && cargo test passes"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "Modify src/prs.rs and src/issues.rs to include cost calculations. Reuse token parsing from US-003."
     }
   ]
 }

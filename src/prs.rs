@@ -1,3 +1,4 @@
+use crate::cost::calculate_cost;
 use crate::flamegraph::{extract_spans, ActivityType};
 use crate::github::{load_current_repo_cache, PrMapping, RepoCache};
 use crate::parser::Session;
@@ -16,6 +17,7 @@ pub struct PrMetrics {
     pub session_count: usize,
     pub merged_at: Option<String>,
     pub closed_issues: Vec<u32>,
+    pub cost: f64,
 }
 
 /// Calculate time spent per PR by matching sessions to PR branches
@@ -27,8 +29,8 @@ pub fn calculate_pr_metrics(sessions: &[Session], cache: &RepoCache) -> Vec<PrMe
         .map(|pr| (pr.branch.as_str(), pr))
         .collect();
 
-    // Build PR -> (minutes, session_count)
-    let mut pr_metrics: HashMap<u32, (f64, usize)> = HashMap::new();
+    // Build PR -> (minutes, session_count, input_tokens, output_tokens)
+    let mut pr_metrics: HashMap<u32, (f64, usize, u64, u64)> = HashMap::new();
 
     for session in sessions {
         let branch = match &session.git_branch {
@@ -48,31 +50,36 @@ pub fn calculate_pr_metrics(sessions: &[Session], cache: &RepoCache) -> Vec<PrMe
             _ => 0.0,
         };
 
-        // Add time to this PR
-        let entry = pr_metrics.entry(pr.pr_number).or_insert((0.0, 0));
+        // Add time and tokens to this PR
+        let entry = pr_metrics.entry(pr.pr_number).or_insert((0.0, 0, 0, 0));
         entry.0 += duration_minutes;
         entry.1 += 1;
+        entry.2 += session.token_input;
+        entry.3 += session.token_output;
     }
 
     // Convert to Vec with PR info
     let mut metrics: Vec<PrMetrics> = pr_metrics
         .into_iter()
-        .filter_map(|(pr_number, (total_minutes, session_count))| {
-            // Find the PR to get its metadata
-            cache
-                .prs
-                .iter()
-                .find(|p| p.pr_number == pr_number)
-                .map(|pr| PrMetrics {
-                    pr_number,
-                    title: pr.title.clone(),
-                    branch: pr.branch.clone(),
-                    total_minutes,
-                    session_count,
-                    merged_at: pr.merged_at.clone(),
-                    closed_issues: pr.closed_issues.clone(),
-                })
-        })
+        .filter_map(
+            |(pr_number, (total_minutes, session_count, input_tokens, output_tokens))| {
+                // Find the PR to get its metadata
+                cache
+                    .prs
+                    .iter()
+                    .find(|p| p.pr_number == pr_number)
+                    .map(|pr| PrMetrics {
+                        pr_number,
+                        title: pr.title.clone(),
+                        branch: pr.branch.clone(),
+                        total_minutes,
+                        session_count,
+                        merged_at: pr.merged_at.clone(),
+                        closed_issues: pr.closed_issues.clone(),
+                        cost: calculate_cost(input_tokens, output_tokens),
+                    })
+            },
+        )
         .collect();
 
     // Sort by total time descending
@@ -93,6 +100,15 @@ fn format_duration(minutes: f64) -> String {
         format!("{}h {}m", hours as u32, mins as u32)
     } else {
         format!("{}m", minutes.round() as u32)
+    }
+}
+
+/// Format cost as USD
+fn format_cost(cost: f64) -> String {
+    if cost < 0.01 {
+        format!("${:.4}", cost)
+    } else {
+        format!("${:.2}", cost)
     }
 }
 
@@ -124,32 +140,35 @@ pub fn list_prs(sessions: &[Session]) {
     // Calculate totals
     let total_time: f64 = metrics.iter().map(|m| m.total_minutes).sum();
     let total_sessions: usize = metrics.iter().map(|m| m.session_count).sum();
+    let total_cost: f64 = metrics.iter().map(|m| m.cost).sum();
 
     // Header
     println!("{}", "PRS BY TIME".bold());
-    println!("{}", "═".repeat(80));
+    println!("{}", "═".repeat(90));
     println!(
-        "{} PRs | {} sessions | {} total\n",
+        "{} PRs | {} sessions | {} total | {} cost\n",
         metrics.len().to_string().bold(),
         total_sessions.to_string().bold(),
-        format_duration(total_time).bold()
+        format_duration(total_time).bold(),
+        format_cost(total_cost).green().bold()
     );
 
     // Column headers
     println!(
-        "{:<8} {:<45} {:>10} {:>10} {:>6}",
+        "{:<8} {:<38} {:>10} {:>8} {:>10} {:>8}",
         "PR".dimmed(),
         "TITLE".dimmed(),
         "TIME".dimmed(),
         "SESSIONS".dimmed(),
+        "COST".dimmed(),
         "ISSUES".dimmed()
     );
-    println!("{}", "─".repeat(80).dimmed());
+    println!("{}", "─".repeat(90).dimmed());
 
     // List PRs
     for m in &metrics {
-        let title_display = if m.title.len() > 43 {
-            format!("{}...", &m.title[..40])
+        let title_display = if m.title.len() > 36 {
+            format!("{}...", &m.title[..33])
         } else {
             m.title.clone()
         };
@@ -164,29 +183,31 @@ pub fn list_prs(sessions: &[Session]) {
                 .join(",")
         };
 
-        let issues_display = if issues_str.len() > 6 {
+        let issues_display = if issues_str.len() > 8 {
             format!("{}+", m.closed_issues.len())
         } else {
             issues_str
         };
 
         println!(
-            "#{:<7} {:<45} {:>10} {:>10} {:>6}",
+            "#{:<7} {:<38} {:>10} {:>8} {:>10} {:>8}",
             m.pr_number,
             title_display,
             format_duration(m.total_minutes),
             m.session_count,
+            format_cost(m.cost),
             issues_display
         );
     }
 
-    println!("{}", "─".repeat(80).dimmed());
+    println!("{}", "─".repeat(90).dimmed());
     println!(
-        "{:<8} {:<45} {:>10} {:>10}",
+        "{:<8} {:<38} {:>10} {:>8} {:>10}",
         "TOTAL".bold(),
         "",
         format_duration(total_time).bold(),
-        total_sessions.to_string().bold()
+        total_sessions.to_string().bold(),
+        format_cost(total_cost).green().bold()
     );
 }
 
@@ -249,6 +270,9 @@ pub fn show_pr_detail(pr_number: u32, sessions: &[Session]) {
     // Calculate totals
     let total_time: f64 = pr_sessions.iter().map(|s| s.duration_minutes).sum();
     let session_count = pr_sessions.len();
+    let total_input: u64 = pr_sessions.iter().map(|s| s.session.token_input).sum();
+    let total_output: u64 = pr_sessions.iter().map(|s| s.session.token_output).sum();
+    let total_cost = calculate_cost(total_input, total_output);
 
     // Determine status
     let status = if pr.merged_at.is_some() {
@@ -284,6 +308,11 @@ pub fn show_pr_detail(pr_number: u32, sessions: &[Session]) {
         format_duration(total_time).bold()
     );
     println!("{}: {}", "Sessions".dimmed(), session_count);
+    println!(
+        "{}: {}",
+        "Cost".dimmed(),
+        format_cost(total_cost).green().bold()
+    );
     println!();
 
     if pr_sessions.is_empty() {
@@ -413,6 +442,8 @@ mod tests {
             start_time: Some(start),
             end_time: Some(end),
             messages: vec![],
+            token_input: 0,
+            token_output: 0,
         }
     }
 
@@ -458,10 +489,12 @@ mod tests {
         assert_eq!(metrics[0].total_minutes, 75.0);
         assert_eq!(metrics[0].session_count, 2);
         assert_eq!(metrics[0].closed_issues, vec![1, 2]);
+        assert_eq!(metrics[0].cost, 0.0); // No tokens in test sessions
 
         assert_eq!(metrics[1].pr_number, 11);
         assert_eq!(metrics[1].total_minutes, 20.0);
         assert_eq!(metrics[1].session_count, 1);
+        assert_eq!(metrics[1].cost, 0.0);
     }
 
     #[test]

@@ -1,3 +1,4 @@
+use crate::cost::calculate_cost;
 use crate::flamegraph::{extract_spans, ActivityType};
 use crate::github::{load_current_repo_cache, PrMapping, RepoCache};
 use crate::parser::Session;
@@ -14,6 +15,7 @@ pub struct IssueMetrics {
     pub branch: String,
     pub total_minutes: f64,
     pub session_count: usize,
+    pub cost: f64,
 }
 
 /// Calculate time spent per issue by matching sessions to PR branches
@@ -25,8 +27,8 @@ pub fn calculate_issue_metrics(sessions: &[Session], cache: &RepoCache) -> Vec<I
         .map(|pr| (pr.branch.as_str(), pr))
         .collect();
 
-    // Build issue -> (title, branch, minutes, session_count)
-    let mut issue_metrics: HashMap<u32, (String, String, f64, usize)> = HashMap::new();
+    // Build issue -> (title, branch, minutes, session_count, input_tokens, output_tokens)
+    let mut issue_metrics: HashMap<u32, (String, String, f64, usize, u64, u64)> = HashMap::new();
 
     for session in sessions {
         let branch = match &session.git_branch {
@@ -51,13 +53,15 @@ pub fn calculate_issue_metrics(sessions: &[Session], cache: &RepoCache) -> Vec<I
             _ => 0.0,
         };
 
-        // Add time to each linked issue
+        // Add time and tokens to each linked issue
         for &issue_num in &pr.closed_issues {
             let entry = issue_metrics
                 .entry(issue_num)
-                .or_insert_with(|| (pr.title.clone(), pr.branch.clone(), 0.0, 0));
+                .or_insert_with(|| (pr.title.clone(), pr.branch.clone(), 0.0, 0, 0, 0));
             entry.2 += duration_minutes;
             entry.3 += 1;
+            entry.4 += session.token_input;
+            entry.5 += session.token_output;
         }
     }
 
@@ -65,12 +69,15 @@ pub fn calculate_issue_metrics(sessions: &[Session], cache: &RepoCache) -> Vec<I
     let mut metrics: Vec<IssueMetrics> = issue_metrics
         .into_iter()
         .map(
-            |(issue_number, (title, branch, total_minutes, session_count))| IssueMetrics {
-                issue_number,
-                title,
-                branch,
-                total_minutes,
-                session_count,
+            |(issue_number, (title, branch, total_minutes, session_count, input, output))| {
+                IssueMetrics {
+                    issue_number,
+                    title,
+                    branch,
+                    total_minutes,
+                    session_count,
+                    cost: calculate_cost(input, output),
+                }
             },
         )
         .collect();
@@ -92,6 +99,15 @@ fn format_duration(minutes: f64) -> String {
         format!("{}h {}m", hours as u32, mins as u32)
     } else {
         format!("{}m", minutes.round() as u32)
+    }
+}
+
+/// Format cost as USD
+fn format_cost(cost: f64) -> String {
+    if cost < 0.01 {
+        format!("${:.4}", cost)
+    } else {
+        format!("${:.2}", cost)
     }
 }
 
@@ -123,51 +139,56 @@ pub fn list_issues(sessions: &[Session]) {
     // Calculate totals
     let total_time: f64 = metrics.iter().map(|m| m.total_minutes).sum();
     let total_sessions: usize = metrics.iter().map(|m| m.session_count).sum();
+    let total_cost: f64 = metrics.iter().map(|m| m.cost).sum();
 
     // Header
     println!("{}", "ISSUES BY TIME".bold());
-    println!("{}", "═".repeat(70));
+    println!("{}", "═".repeat(82));
     println!(
-        "{} issues | {} sessions | {} total\n",
+        "{} issues | {} sessions | {} total | {} cost\n",
         metrics.len().to_string().bold(),
         total_sessions.to_string().bold(),
-        format_duration(total_time).bold()
+        format_duration(total_time).bold(),
+        format_cost(total_cost).green().bold()
     );
 
     // Column headers
     println!(
-        "{:<8} {:<40} {:>10} {:>10}",
+        "{:<8} {:<38} {:>10} {:>10} {:>10}",
         "ISSUE".dimmed(),
         "TITLE".dimmed(),
         "TIME".dimmed(),
-        "SESSIONS".dimmed()
+        "SESSIONS".dimmed(),
+        "COST".dimmed()
     );
-    println!("{}", "─".repeat(70).dimmed());
+    println!("{}", "─".repeat(82).dimmed());
 
     // List issues
     for m in &metrics {
-        let title_display = if m.title.len() > 38 {
-            format!("{}...", &m.title[..35])
+        let title_display = if m.title.len() > 36 {
+            format!("{}...", &m.title[..33])
         } else {
             m.title.clone()
         };
 
         println!(
-            "#{:<7} {:<40} {:>10} {:>10}",
+            "#{:<7} {:<38} {:>10} {:>10} {:>10}",
             m.issue_number,
             title_display,
             format_duration(m.total_minutes),
-            m.session_count
+            m.session_count,
+            format_cost(m.cost)
         );
     }
 
-    println!("{}", "─".repeat(70).dimmed());
+    println!("{}", "─".repeat(82).dimmed());
     println!(
-        "{:<8} {:<40} {:>10} {:>10}",
+        "{:<8} {:<38} {:>10} {:>10} {:>10}",
         "TOTAL".bold(),
         "",
         format_duration(total_time).bold(),
-        total_sessions.to_string().bold()
+        total_sessions.to_string().bold(),
+        format_cost(total_cost).green().bold()
     );
 }
 
@@ -233,6 +254,9 @@ pub fn show_issue_detail(issue_number: u32, sessions: &[Session]) {
     // Calculate totals
     let total_time: f64 = issue_sessions.iter().map(|s| s.duration_minutes).sum();
     let session_count = issue_sessions.len();
+    let total_input: u64 = issue_sessions.iter().map(|s| s.session.token_input).sum();
+    let total_output: u64 = issue_sessions.iter().map(|s| s.session.token_output).sum();
+    let total_cost = calculate_cost(total_input, total_output);
 
     // Determine status
     let status = if pr.merged_at.is_some() {
@@ -256,6 +280,11 @@ pub fn show_issue_detail(issue_number: u32, sessions: &[Session]) {
         format_duration(total_time).bold()
     );
     println!("{}: {}", "Sessions".dimmed(), session_count);
+    println!(
+        "{}: {}",
+        "Cost".dimmed(),
+        format_cost(total_cost).green().bold()
+    );
     println!();
 
     if issue_sessions.is_empty() {
@@ -385,6 +414,8 @@ mod tests {
             start_time: Some(start),
             end_time: Some(end),
             messages: vec![],
+            token_input: 0,
+            token_output: 0,
         }
     }
 
@@ -429,10 +460,12 @@ mod tests {
         assert_eq!(metrics[0].issue_number, 1);
         assert_eq!(metrics[0].total_minutes, 75.0);
         assert_eq!(metrics[0].session_count, 2);
+        assert_eq!(metrics[0].cost, 0.0); // No tokens in test sessions
 
         assert_eq!(metrics[1].issue_number, 2);
         assert_eq!(metrics[1].total_minutes, 20.0);
         assert_eq!(metrics[1].session_count, 1);
+        assert_eq!(metrics[1].cost, 0.0);
     }
 
     #[test]

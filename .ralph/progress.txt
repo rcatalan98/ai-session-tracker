@@ -56,3 +56,47 @@ Started: 2026-01-13
   - Same activity color scheme and proportional bars as generate_svg_by_project
   - Load GitHub cache at start, return clear error if not found
 ---
+
+## Codebase Patterns (Updated 2026-01-14)
+
+- Pattern: Token usage is in assistant messages under `message.usage`
+- Pattern: Fields: input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens
+- Pattern: Cache reads are discounted (usually free), cache creation counts toward input
+- Gotcha: Only assistant messages have usage data, not user messages
+- Pattern: Claude Opus pricing: $15/M input, $75/M output tokens
+- Pattern: Use calculate_cost() from cost.rs for consistent pricing across commands
+- Pattern: Add text_content to Message for capturing user prompts
+- Pattern: preceding_prompt links bottlenecks to the prompt that triggered them
+
+---
+
+## 2026-01-14 - Prompt Quality & Cost Tracking Feature
+
+### US-001: Extract prompts before bottlenecks
+- Added text_content field to Message struct
+- Added preceding_prompt field to all bottleneck structs
+- Implemented find_preceding_prompt helper to look backwards through messages
+- Prompts truncated to 200 chars
+
+### US-002: Show prompts flag for bottlenecks command
+- Added --show-prompts flag to `aist bottlenecks`
+- Displays prompt in dimmed italic style below each bottleneck
+
+### US-003: Parse token usage from transcripts
+- Added token_input and token_output fields to Session struct
+- Parse usage data from `message.usage` in assistant messages
+- Aggregates input_tokens + cache_creation_input_tokens as billable input
+
+### US-004: Cost command
+- Created src/cost.rs with calculate_cost() function
+- Added `aist cost` command with --period and --detailed flags
+- Shows total tokens, breakdown by input/output, and estimated cost
+
+### US-005: Cost per PR/Issue
+- Added cost column to `aist prs` and `aist issues` output
+- Added total cost to `aist pr <N>` and `aist issue <N>` detail views
+- Reused calculate_cost() for consistent pricing
+
+**Files changed:** src/parser.rs, src/bottlenecks.rs, src/cost.rs (new), src/main.rs, src/prs.rs, src/issues.rs
+
+---

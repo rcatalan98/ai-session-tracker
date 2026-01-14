@@ -16,6 +16,10 @@ pub struct Session {
     pub start_time: Option<DateTime<Utc>>,
     pub end_time: Option<DateTime<Utc>>,
     pub messages: Vec<Message>,
+    /// Total input tokens consumed in this session
+    pub token_input: u64,
+    /// Total output tokens consumed in this session
+    pub token_output: u64,
 }
 
 /// A message in a session
@@ -26,6 +30,7 @@ pub struct Message {
     pub timestamp: Option<DateTime<Utc>>,
     pub tool_calls: Vec<ToolCall>,
     pub tool_results: Vec<ToolResult>,
+    pub text_content: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -70,6 +75,17 @@ struct RawMessage {
 #[derive(Debug, Deserialize)]
 struct RawMessageContent {
     content: Option<serde_json::Value>,
+    usage: Option<RawUsage>,
+}
+
+/// Token usage data from Claude API responses
+#[derive(Debug, Deserialize)]
+struct RawUsage {
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+    #[allow(dead_code)]
+    cache_read_input_tokens: Option<u64>, // Usually free, not counted
 }
 
 /// Get the Claude projects directory
@@ -131,6 +147,8 @@ fn parse_session_file(path: &Path) -> Option<Session> {
     let mut git_branch = None;
     let mut messages = vec![];
     let mut timestamps: Vec<DateTime<Utc>> = vec![];
+    let mut token_input: u64 = 0;
+    let mut token_output: u64 = 0;
 
     for line in reader.lines() {
         let line = match line {
@@ -183,14 +201,25 @@ fn parse_session_file(path: &Path) -> Option<Session> {
             _ => MessageType::Unknown,
         };
 
-        // Parse tool calls and results from message content
-        let (tool_calls, tool_results) = parse_message_content(&raw.message);
+        // Parse tool calls, results, and text from message content
+        let (tool_calls, tool_results, text_content) = parse_message_content(&raw.message);
+
+        // Extract token usage from assistant messages
+        if let Some(ref msg) = raw.message {
+            if let Some(ref usage) = msg.usage {
+                // input_tokens + cache_creation_input_tokens = billable input
+                token_input += usage.input_tokens.unwrap_or(0);
+                token_input += usage.cache_creation_input_tokens.unwrap_or(0);
+                token_output += usage.output_tokens.unwrap_or(0);
+            }
+        }
 
         messages.push(Message {
             msg_type,
             timestamp,
             tool_calls,
             tool_results,
+            text_content,
         });
     }
 
@@ -228,22 +257,27 @@ fn parse_session_file(path: &Path) -> Option<Session> {
         start_time,
         end_time,
         messages,
+        token_input,
+        token_output,
     })
 }
 
-/// Parse tool calls and results from message content
-fn parse_message_content(content: &Option<RawMessageContent>) -> (Vec<ToolCall>, Vec<ToolResult>) {
+/// Parse tool calls, results, and text content from message content
+fn parse_message_content(
+    content: &Option<RawMessageContent>,
+) -> (Vec<ToolCall>, Vec<ToolResult>, Option<String>) {
     let mut tool_calls = vec![];
     let mut tool_results = vec![];
+    let mut text_parts = vec![];
 
     let content = match content {
         Some(c) => c,
-        None => return (tool_calls, tool_results),
+        None => return (tool_calls, tool_results, None),
     };
 
     let items = match &content.content {
         Some(serde_json::Value::Array(arr)) => arr,
-        _ => return (tool_calls, tool_results),
+        _ => return (tool_calls, tool_results, None),
     };
 
     for item in items {
@@ -251,6 +285,11 @@ fn parse_message_content(content: &Option<RawMessageContent>) -> (Vec<ToolCall>,
             let item_type = obj.get("type").and_then(|v| v.as_str());
 
             match item_type {
+                Some("text") => {
+                    if let Some(text) = obj.get("text").and_then(|v| v.as_str()) {
+                        text_parts.push(text.to_string());
+                    }
+                }
                 Some("tool_use") => {
                     let name = obj
                         .get("name")
@@ -287,7 +326,13 @@ fn parse_message_content(content: &Option<RawMessageContent>) -> (Vec<ToolCall>,
         }
     }
 
-    (tool_calls, tool_results)
+    let text_content = if text_parts.is_empty() {
+        None
+    } else {
+        Some(text_parts.join("\n"))
+    };
+
+    (tool_calls, tool_results, text_content)
 }
 
 /// Load all sessions, optionally filtered by project

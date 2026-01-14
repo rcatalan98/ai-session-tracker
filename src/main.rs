@@ -1,4 +1,5 @@
 mod bottlenecks;
+mod cost;
 mod export;
 mod flamegraph;
 mod github;
@@ -44,6 +45,10 @@ enum Commands {
         /// Number of bottlenecks to show
         #[arg(short, long, default_value = "10")]
         limit: usize,
+
+        /// Show the user prompt that preceded each bottleneck
+        #[arg(long)]
+        show_prompts: bool,
     },
 
     /// Generate a summary report
@@ -157,6 +162,17 @@ enum Commands {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+
+    /// Show token usage and estimated API cost
+    Cost {
+        /// Report period: day, week, month, all
+        #[arg(short, long, default_value = "all")]
+        period: String,
+
+        /// Show per-session breakdown
+        #[arg(short, long)]
+        detailed: bool,
+    },
 }
 
 fn main() {
@@ -166,8 +182,12 @@ fn main() {
         Commands::Analyze { project, verbose } => {
             analyze_command(project, verbose);
         }
-        Commands::Bottlenecks { project, limit } => {
-            bottlenecks_command(project, limit);
+        Commands::Bottlenecks {
+            project,
+            limit,
+            show_prompts,
+        } => {
+            bottlenecks_command(project, limit, show_prompts);
         }
         Commands::Report { period, format } => {
             report_command(&period, &format);
@@ -207,6 +227,9 @@ fn main() {
             output,
         } => {
             export_command(owner.as_deref(), repo.as_deref(), &period, output);
+        }
+        Commands::Cost { period, detailed } => {
+            cost_command(&period, detailed);
         }
     }
 }
@@ -321,7 +344,7 @@ fn analyze_command(project: Option<PathBuf>, verbose: bool) {
     );
 }
 
-fn bottlenecks_command(project: Option<PathBuf>, limit: usize) {
+fn bottlenecks_command(project: Option<PathBuf>, limit: usize, show_prompts: bool) {
     let sessions = parser::load_sessions(project.as_deref());
 
     if sessions.is_empty() {
@@ -330,7 +353,7 @@ fn bottlenecks_command(project: Option<PathBuf>, limit: usize) {
     }
 
     let detected = bottlenecks::detect_all(&sessions);
-    bottlenecks::print_bottlenecks(&detected, limit);
+    bottlenecks::print_bottlenecks(&detected, limit, show_prompts);
 }
 
 fn report_command(period: &str, format: &str) {
@@ -626,4 +649,15 @@ fn export_command(owner: Option<&str>, repo: Option<&str>, period: &str, output:
             println!("{}: {}", "Error".red(), e);
         }
     }
+}
+
+fn cost_command(period: &str, detailed: bool) {
+    let sessions = parser::load_sessions(None);
+
+    if sessions.is_empty() {
+        println!("{}", "No sessions found.".yellow());
+        return;
+    }
+
+    cost::print_cost_summary(&sessions, period, detailed);
 }

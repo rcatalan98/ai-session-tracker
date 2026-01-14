@@ -50,20 +50,50 @@ aist flame --group-by issue     # Group by GitHub issue
 
 ### GitHub Integration
 
-Track time spent per GitHub issue by linking PRs to Claude sessions:
+Track time spent per GitHub issue and PR by linking to Claude sessions:
 
 ```bash
 # Sync merged PRs from GitHub (caches PR→Issue→Branch mappings)
 aist sync
+
+# List time spent per PR
+aist prs
+
+# Detailed breakdown for a specific PR
+aist pr 12
 
 # List time spent per issue
 aist issues
 
 # Detailed breakdown for a specific issue
 aist issue 4
+
+# Export HTML report for current repo
+aist export
+
+# Export with options
+aist export --period week --output my-report.html
 ```
 
-**How it works:** Sessions are linked to issues via branch names. When you work on a branch like `feature/issue-4-auth`, and your PR says "Closes #4", `aist` connects all sessions on that branch to issue #4.
+**How it works:** Sessions are linked to PRs/issues via branch names. When you work on a branch like `feature/issue-4-auth`, and your PR says "Closes #4", `aist` connects all sessions on that branch to that PR and issue #4.
+
+### HTML Reports
+
+Generate comprehensive reports with interactive flamegraphs:
+
+```bash
+aist export                    # Auto-detect repo from git remote
+aist export --period week      # Filter by time period
+aist export --owner X --repo Y # Specify repo explicitly
+```
+
+Reports include:
+- Summary stats (sessions, time, efficiency)
+- Time breakdown by activity type
+- Bottleneck analysis
+- PR breakdown table
+- Recommendations
+- Interactive flamegraph (hover for details)
 
 ## Example Output
 
