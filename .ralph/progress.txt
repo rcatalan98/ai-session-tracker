@@ -56,3 +56,13 @@ Started: 2026-01-13
   - Same activity color scheme and proportional bars as generate_svg_by_project
   - Load GitHub cache at start, return clear error if not found
 ---
+
+## Codebase Patterns (Updated 2026-01-14)
+
+- Pattern: Token usage is in assistant messages under `message.usage`
+- Pattern: Fields: input_tokens, cache_creation_input_tokens, cache_read_input_tokens, output_tokens
+- Pattern: Cache reads are discounted (usually free), cache creation counts toward input
+- Gotcha: Only assistant messages have usage data, not user messages
+- Pattern: Claude Opus pricing: $15/M input, $75/M output tokens
+
+---

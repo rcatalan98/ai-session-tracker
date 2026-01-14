@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Session Report - rcatalan98/ai-session-tracker</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f9fafb;
+        }
+        h1 { font-size: 2rem; color: #111; margin-bottom: 0.25rem; }
+        h2 { font-size: 1.25rem; color: #374151; margin: 2rem 0 1rem; border-bottom: 2px solid #e5e7eb; padding-bottom: 0.5rem; }
+        .subtitle { color: #6b7280; font-size: 1rem; margin-bottom: 0.5rem; }
+        .date-range { color: #9ca3af; font-size: 0.875rem; margin-bottom: 2rem; }
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; }
+        .stat { text-align: center; padding: 1rem; }
+        .stat-value { font-size: 2rem; font-weight: bold; color: #111; }
+        .stat-label { font-size: 0.875rem; color: #6b7280; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid #e5e7eb; }
+        th { background: #f9fafb; font-weight: 600; color: #374151; }
+        tr:hover { background: #f9fafb; }
+        .bar-container { width: 100%; background: #e5e7eb; border-radius: 4px; height: 8px; }
+        .bar { height: 100%; border-radius: 4px; }
+        .bar-productive { background: #4ade80; }
+        .bar-reading { background: #facc15; }
+        .bar-executing { background: #60a5fa; }
+        .bar-error { background: #f87171; }
+        .bar-gap { background: #9ca3af; }
+        .bar-thinking { background: #c4b5fd; }
+        .recommendation { padding: 0.75rem 1rem; margin: 0.5rem 0; background: #f0f9ff; border-left: 4px solid #3b82f6; border-radius: 0 4px 4px 0; }
+        .flamegraph-container { margin-top: 1rem; overflow-x: auto; }
+        .flamegraph-container svg { max-width: 100%; height: auto; }
+        .footer { margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #e5e7eb; color: #9ca3af; font-size: 0.875rem; text-align: center; }
+    </style>
+</head>
+<body>
+    <h1>rcatalan98/ai-session-tracker</h1>
+    <p class="subtitle">AI Session Report</p>
+    <p class="date-range">January 13, 2026 — January 13, 2026</p>
+
+    <h2>Summary</h2>
+    <div class="card">
+        <div class="stats-grid">
+            <div class="stat">
+                <div class="stat-value">3</div>
+                <div class="stat-label">Sessions</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">8m</div>
+                <div class="stat-label">Total Time</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">99%</div>
+                <div class="stat-label">Efficiency</div>
+            </div>
+        </div>
+    </div>
+
+    <h2>Time Breakdown</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>Activity</th><th>Time</th><th>%</th><th>Distribution</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                <td>Thinking</td>
+                <td>8m</td>
+                <td>95%</td>
+                <td><div class="bar-container"><div class="bar bar-thinking" style="width: 95%"></div></div></td>
+            </tr><tr>
+                <td>Executing</td>
+                <td>0m</td>
+                <td>3%</td>
+                <td><div class="bar-container"><div class="bar bar-executing" style="width: 3%"></div></div></td>
+            </tr><tr>
+                <td>Error</td>
+                <td>0m</td>
+                <td>0%</td>
+                <td><div class="bar-container"><div class="bar bar-error" style="width: 0%"></div></div></td>
+            </tr><tr>
+                <td>Productive</td>
+                <td>0m</td>
+                <td>0%</td>
+                <td><div class="bar-container"><div class="bar bar-productive" style="width: 0%"></div></div></td>
+            </tr><tr>
+                <td>Reading/Search</td>
+                <td>0m</td>
+                <td>0%</td>
+                <td><div class="bar-container"><div class="bar bar-reading" style="width: 0%"></div></div></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Bottlenecks</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>Type</th><th>Count</th><th>Time Lost</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>Error Loop</td><td>3</td><td>3m</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>PR Breakdown</h2>
+    <div class="card">
+        <table>
+            <thead>
+                <tr><th>PR</th><th>Title</th><th>Time</th><th>Sessions</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>#16</td><td>feat: GitHub integration for issue-level time t...</td><td>8m</td><td>3</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <h2>Recommendations</h2>
+    <div class="card">
+        <div class="recommendation"><strong>3 error loops</strong> detected. Consider providing more context or examples when asking for help.</div>
+    </div>
+
+    <h2>Session Flamegraph</h2>
+    <div class="card">
+        <div class="flamegraph-container">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 180" width="1200" height="180">
+<style>
+  .pr-label { font: bold 12px monospace; fill: #374151; }
+  .stats-label { font: 10px monospace; fill: #6b7280; }
+  .legend-label { font: 12px sans-serif; fill: #374151; }
+  .title { font: bold 16px sans-serif; fill: #111827; }
+  rect.span { stroke: #fff; stroke-width: 1; }
+  rect.span:hover { stroke: #000; stroke-width: 2; opacity: 0.8; }
+</style>
+<rect width="100%" height="100%" fill="#f9fafb"/>
+<text x="40" y="25" class="title">AI Session Flamegraph (by PR)</text><rect x="40" y="45" width="14" height="14" fill="#4ade80" rx="2"/>
+<text x="58" y="56" class="legend-label">Productive</text><rect x="160" y="45" width="14" height="14" fill="#facc15" rx="2"/>
+<text x="178" y="56" class="legend-label">Reading/Search</text><rect x="300" y="45" width="14" height="14" fill="#60a5fa" rx="2"/>
+<text x="318" y="56" class="legend-label">Executing</text><rect x="420" y="45" width="14" height="14" fill="#f87171" rx="2"/>
+<text x="438" y="56" class="legend-label">Error</text><rect x="510" y="45" width="14" height="14" fill="#9ca3af" rx="2"/>
+<text x="528" y="56" class="legend-label">Gap/Pause</text><rect x="610" y="45" width="14" height="14" fill="#c4b5fd" rx="2"/>
+<text x="628" y="56" class="legend-label">Thinking</text><text x="40" y="120" class="pr-label">PR #16 feat: GitHub inte...</text>
+<text x="40" y="134" class="stats-label">3 sessions, 8m</text><rect x="220" y="104" width="940" height="32" fill="#e5e7eb" rx="3"/><rect class="span" x="220" y="104" width="35" height="32" fill="#60a5fa" rx="2">
+<title>Executing: 0m (3%)</title>
+</rect><rect class="span" x="255" y="104" width="7" height="32" fill="#f87171" rx="2">
+<title>Error: 0m (0%)</title>
+</rect><rect class="span" x="262" y="104" width="987" height="32" fill="#c4b5fd" rx="2">
+<title>Thinking: 8m (105%)</title>
+</rect></svg>
+        </div>
+    </div>
+
+    <div class="footer">
+        Generated by <strong>aist</strong> (AI Session Tracker) • 2026-01-13 21:00
+    </div>
+</body>
+</html>

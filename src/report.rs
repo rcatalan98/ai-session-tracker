@@ -473,12 +473,14 @@ mod tests {
                     timestamp: Some(start),
                     tool_calls: vec![],
                     tool_results: vec![],
+                    text_content: Some("help me".to_string()),
                 },
                 Message {
                     msg_type: MessageType::Assistant,
                     timestamp: Some(end),
                     tool_calls: vec![],
                     tool_results: vec![],
+                    text_content: None,
                 },
             ],
         }
