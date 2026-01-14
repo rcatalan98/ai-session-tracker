@@ -15,7 +15,7 @@
         "cargo fmt --check && cargo clippy && cargo test passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": "Modify src/bottlenecks.rs. When detecting a bottleneck, look backwards through messages to find the preceding 'user' type message. Store first 200 chars."
     },
     {

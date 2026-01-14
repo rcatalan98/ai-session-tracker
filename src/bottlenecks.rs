@@ -445,7 +445,7 @@ fn shorten_path(path: &str) -> String {
 }
 
 /// Print bottlenecks to terminal
-pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize) {
+pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize, show_prompts: bool) {
     if bottlenecks.is_empty() {
         println!("{}", "No bottlenecks detected.".green());
         return;
@@ -462,7 +462,7 @@ pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize) {
     );
 
     for (i, bottleneck) in bottlenecks.iter().take(limit).enumerate() {
-        print_single_bottleneck(i + 1, bottleneck);
+        print_single_bottleneck(i + 1, bottleneck, show_prompts);
         println!();
     }
 
@@ -474,7 +474,7 @@ pub fn print_bottlenecks(bottlenecks: &[Bottleneck], limit: usize) {
     }
 }
 
-fn print_single_bottleneck(num: usize, bottleneck: &Bottleneck) {
+fn print_single_bottleneck(num: usize, bottleneck: &Bottleneck, show_prompt: bool) {
     match bottleneck {
         Bottleneck::ErrorLoop(e) => {
             println!(
@@ -569,6 +569,16 @@ fn print_single_bottleneck(num: usize, bottleneck: &Bottleneck) {
                 "   {}",
                 "Suggestion: Review what caused the pause - unclear requirements?".cyan()
             );
+        }
+    }
+
+    // Show preceding prompt if requested
+    if show_prompt {
+        if let Some(prompt) = bottleneck.preceding_prompt() {
+            println!("   {}", "Prompt:".dimmed());
+            println!("   {}", format!("\"{}\"", prompt).italic().dimmed());
+        } else {
+            println!("   {}", "Prompt: (no prompt found)".dimmed());
         }
     }
 }

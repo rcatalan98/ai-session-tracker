@@ -44,6 +44,10 @@ enum Commands {
         /// Number of bottlenecks to show
         #[arg(short, long, default_value = "10")]
         limit: usize,
+
+        /// Show the user prompt that preceded each bottleneck
+        #[arg(long)]
+        show_prompts: bool,
     },
 
     /// Generate a summary report
@@ -166,8 +170,12 @@ fn main() {
         Commands::Analyze { project, verbose } => {
             analyze_command(project, verbose);
         }
-        Commands::Bottlenecks { project, limit } => {
-            bottlenecks_command(project, limit);
+        Commands::Bottlenecks {
+            project,
+            limit,
+            show_prompts,
+        } => {
+            bottlenecks_command(project, limit, show_prompts);
         }
         Commands::Report { period, format } => {
             report_command(&period, &format);
@@ -321,7 +329,7 @@ fn analyze_command(project: Option<PathBuf>, verbose: bool) {
     );
 }
 
-fn bottlenecks_command(project: Option<PathBuf>, limit: usize) {
+fn bottlenecks_command(project: Option<PathBuf>, limit: usize, show_prompts: bool) {
     let sessions = parser::load_sessions(project.as_deref());
 
     if sessions.is_empty() {
@@ -330,7 +338,7 @@ fn bottlenecks_command(project: Option<PathBuf>, limit: usize) {
     }
 
     let detected = bottlenecks::detect_all(&sessions);
-    bottlenecks::print_bottlenecks(&detected, limit);
+    bottlenecks::print_bottlenecks(&detected, limit, show_prompts);
 }
 
 fn report_command(period: &str, format: &str) {
